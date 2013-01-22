@@ -1,0 +1,81 @@
+\section*{Exercise 1: Variational Monte Carlo calculations of the helium atom}
+
+We will start with the simplest possible system beyond hydrogen, namely the helium atom. We label $r_1$ the distance from electron 1 to the nucleus and similarly $r_2$ the distance between electron 2 and the nucleus. The contribution to the potential energy from the interactions between the 
+electrons and the nucleus is
+\be
+   \OP{V}_{nuc}(\vec r_1, \vec r_2) 
+   = 
+   -\frac{2}{r_1}-\frac{2}{r_2},
+\ee 
+and if we add the electron-electron repulsion with $r_{12}=|{\bf r}_1-{\bf r}_2|$, the total potential energy  $\OP{V}(\vec r_1, \vec r_2)$ is
+\be
+ \OP{V}(\vec r_1, \vec r_2)
+ =
+ - \frac{2}{r_1}-\frac{2}{r_2}
+ + \frac{1}{r_{12}},
+\ee
+yielding the total Hamiltonian
+\be
+   \OP{H}(\vec r_1, \vec r_2) 
+   = 
+   - \frac{\nabla_1^2}{2}-\frac{\nabla_2^2}{2}
+   - \frac{2}{r_1}-\frac{2}{r_2}
+   + \frac{1}{r_{12}},
+\ee
+and Schr\"odinger's equation reads
+\be
+   \OP{H}\psi = E\psi.
+\ee
+All equations are in so-called atomic units. The distances $r_i$ and $r_{12}$ are dimensionless. To have energies in electronvolt you need to multiply all results with $2\times E_0$, where $E_0=13.6$ eV. The experimental binding energy for helium in atomic units a.u. is $E_{\mathrm{He}}=-2.9037$ a.u.. See chapter 14 of the lecture notes\cite{computationalphysics} for more details.
+
+
+\begin{enumerate}
+
+\item[1a)]
+We want to perform  a Variational Monte Carlo calculation of the ground state of the helium atom. In our first attempt we will use a brute force Metropolis sampling with a trial wave function which has the following form
+\begin{equation}
+   \psi_{T}( \vec r_1, \vec r_2) = 
+   e^{-\alpha(r_1+r_2)}
+   e^{\frac{r_{12}}{2(1+\beta r_{12})}}, 
+\label{eq:trial}
+\end{equation}
+with $\alpha$ and $\beta$ as variational parameters.
+
+Your task is to perform a Variational Monte Carlo calculation using the Metropolis algorithm to compute the integral
+\begin{equation}
+   \langle E \rangle =
+   \frac{\int \psi^{\ast}_T({\bf r_1},{\bf r_2})\OP{H}({\bf r_1},{\bf r_2})\psi_T({\bf r_1},{\bf r_2}) d{\bf r_1}d{\bf r_2}}
+        {\int\psi^{\ast}_T({\bf r_1},{\bf r_2})\psi_T({\bf r_1},{\bf r_2}) d{\bf r_1}d{\bf r_2}}.
+\end{equation}
+Parallelize your program. Find the energy minimum by plotting the energy surface as a function of the variational parameters. Using the optimal parameters compute the mean distance $r_{12}$ between the two electrons. A sample code for doing a VMC calculation for the helium atom can be found at \url{https://github.com/ComputationalPhysics} and find the project called 'Basic VMC'.
+
+Your Monte Carlo moves are determined by
+\begin{equation}
+   {\bf R}' = {\bf R} + \vec r \delta ,
+\end{equation}
+where $\vec r$ is a random vector where each of the components are drawn from a uniform distribution, and $\delta$ a chosen step length. In solving this exercise you need to devise an algorithm which finds an optimal value of $\delta$, so that roughly $50\%$ of the moves are accepted. Note that the optimal value of $\delta$ depends on the variational parameters $\alpha$ and $\beta$. 
+
+Give a physical  interpretation of the best value of $\alpha$. Make a plot of the variance as a function of the number of Monte Carlo cycles.
+
+\item[1b)]
+Find closed form expressions for the local energy (see below) for the above trial wave function and explain shortly how this trial function satisfies the cusp condition when $r_1\rightarrow 0$ or $r_2\rightarrow 0$ or  $r_{12}\rightarrow 0$. Show that the closed-form expression for the trial wave function is
+\[ 
+E_{L2} = E_{L1}+\frac{1}{2(1+\beta r_{12})^2}\left\{\frac{\alpha(r_1+r_2)}{r_{12}}(1-\frac{\mathbf{r}_1\mathbf{r}_2}{r_1r_2})-\frac{1}{2(1+\beta r_{12})^2}-\frac{2}{r_{12}}+\frac{2\beta}{1+\beta r_{12}}\right\},
+\]
+where
+\[ 
+E_{L1} = \left(\alpha-Z\right)\left(\frac{1}{r_1}+\frac{1}{r_2}\right)+\frac{1}{r_{12}}-\alpha^2.
+\]
+
+Compare the results of with and without the closed-form expressions (in terms of CPU time).
+
+\item[1c)] 
+Introduce now importance sampling and study the dependence of the results as a function of the time step $\Delta t$. Compare the results with those obtained under 1a) and comment eventual differences. In performing the Monte Carlo analysis you should use blocking\cite{FLY89} as a technique to make a statistical analysis of the numerical data. The code has to run in parallel.
+
+\item[1d)]  
+With the optimal parameters for the ground state wave function, compute the onebody density and the charge density. Discuss your results and compare the results with those obtained with a pure hydrogenic wave functions. Run a Monte Carlo calculations without the Jastrow factor as well and compute the same quantities. How important are the correlations induced by the Jastrow factor?
+
+\item[1e)]  
+Repeat step 1c) and minimize the energy by finding the optimal variational parameters. This can be done using methods like the stochastic gradient decent\cite{SGA}, conjugate gradient, or some other algorithm of your choice.
+
+\end{enumerate}
