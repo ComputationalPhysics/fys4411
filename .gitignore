@@ -1,4 +1,13 @@
 *.acn
+*.slo
+*.lo
+*.so
+*.dylib
+*.a
+*.lai
+*.la
+*.dll
+*.pdf
 *.acr
 *.alg
 *.aux
@@ -30,3 +39,4 @@
 *.vrb
 *.xdy
 *.tdo
+*.o
