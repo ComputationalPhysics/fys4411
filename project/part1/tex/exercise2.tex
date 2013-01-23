@@ -6,8 +6,8 @@ The new item you need to pay attention to is the calculation of the Slater Deter
 \begin{equation}
    \psi_{T}({\bf r_1},{\bf r_2}, {\bf r_3}, {\bf r_4}) = 
    Det\left(
-   \phi_{1}, \phi_{2},
-   \phi_{3}, \phi_{4}
+   \phi_{1s}^\uparrow, \phi_{1s}^\downarrow,
+   \phi_{2s}^\uparrow, \phi_{2s}^\downarrow
    \right)
    \prod_{i<j}^{4}\exp{\left(\frac{r_{ij}}{2(1+\beta r_{ij})}\right)}, 
 \end{equation}
@@ -22,8 +22,8 @@ where $Det$ is a Slater determinant
       \phi_1(\vec{r}_1) & \phi_2(\vec{r}_1) & \phi_3(\vec{r}_1) & \phi_4(\vec{r}_1) \\ 
       \phi_1(\vec{r}_2) & \phi_2(\vec{r}_2) & \phi_3(\vec{r}_2) & \phi_4(\vec{r}_2) \\ 
       \phi_1(\vec{r}_3) & \phi_2(\vec{r}_3) & \phi_3(\vec{r}_3) & \phi_4(\vec{r}_3) \\ 
-      \phi_1(\vec{r}_4) & \phi_2(\vec{r}_4) & \phi_3(\vec{r}_4) & \phi_4(\vec{r}_4),
-    \end{matrix} \right|
+      \phi_1(\vec{r}_4) & \phi_2(\vec{r}_4) & \phi_3(\vec{r}_4) & \phi_4(\vec{r}_4)
+    \end{matrix} \right|,
 \end{equation}
 and the single-particle wave functions are the hydrogen wave functions for the $1s$ and $2s$ orbitals. Their form within the variational ansatz are given by
 \begin{equation}
@@ -50,8 +50,8 @@ Observe that $r_i = \sqrt{r_{i_x}^2+r_{i_y}^2+r_{i_z}^2}$.
 You can approximate the ground state of the Beryllium atom by writing it out as the Slater determinant 
 \begin{equation}
    \psi_{T}({\bf r_1},{\bf r_2}, {\bf r_3}, {\bf r_4}) \propto 
-\left(\phi_{1s}({\bf r_1})\phi_{2s}({\bf r_2})-\phi_{1s}({\bf r_2})\phi_{2s}({\bf r_1})\right)
-\left(\phi_{1s}({\bf r_3})\phi_{2s}({\bf r_4})-\phi_{1s}({\bf r_4})\phi_{2s}({\bf r_3})\right).
+\left(\phi_{1s}^\uparrow({\bf r_1})\phi^\uparrow_{2s}({\bf r_2})-\phi^\uparrow_{1s}({\bf r_2})\phi^\uparrow_{2s}({\bf r_1})\right)
+\left(\phi^\downarrow_{1s}({\bf r_3})\phi^\downarrow_{2s}({\bf r_4})-\phi^\downarrow_{1s}({\bf r_4})\phi^\downarrow_{2s}({\bf r_3})\right).
 \end{equation}
 Here you can see a simple code example which implements the above expression
 \vspace{12pt}
@@ -60,7 +60,7 @@ Here you can see a simple code example which implements the above expression
     arg[i] = 0.0;
     rSingleParticle = 0;
     for(int j = 0; j < dimension; j++) {
-      rSingleParticle  += r[i][j]*r[i][j];
+      rSingleParticle  += r(i,j)*r(i,j);
     }
     arg[i] = sqrt(rSingleParticle);
   }
@@ -91,7 +91,7 @@ a= 1/2.
 \] 
 
 \begin{enumerate}
-\item[(2a)]   Write a function which sets up the Slater determinant for beryllium and neon and can be generalized to
+\item[2a)]   Write a function which sets up the Slater determinant for beryllium and neon and can be generalized to
 handle larger systems as well. 
 Compute the ground state energies of neon and beryllium as you did for the helium atom
 in 1d). 

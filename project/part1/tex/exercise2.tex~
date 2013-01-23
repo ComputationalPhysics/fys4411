@@ -1,0 +1,106 @@
+
+\section*{Exercise 2: Variational Monte Carlo calculations of the Beryllium and  Neon atoms}
+The previous exercise has prepared you for extending your calculational machinery to other systems. Here we will focus on the neon and beryllium atoms. It is convenient to make classes of trial wave functions, both many-body wave functions and single-particle wave functions and the quantum numbers involved, such as spin, orbital momentum and principal quantum numbers.
+
+The new item you need to pay attention to is the calculation of the Slater Determinant. This is an additional complication to your VMC calculations. If we stick to hydrogen-like wave functions, the trial wave function for Beryllium can be written as 
+\begin{equation}
+   \psi_{T}({\bf r_1},{\bf r_2}, {\bf r_3}, {\bf r_4}) = 
+   Det\left(
+   \phi_{1s}^\uparrow, \phi_{1s}^\downarrow,
+   \phi_{2s}^\uparrow, \phi_{2s}^\downarrow
+   \right)
+   \prod_{i<j}^{4}\exp{\left(\frac{r_{ij}}{2(1+\beta r_{ij})}\right)}, 
+\end{equation}
+where $Det$ is a Slater determinant
+\begin{equation}
+   Det\left(
+   \phi_{1}, \phi_{2},
+   \phi_{3}, \phi_{4}
+   \right)
+    \propto 
+    \left| \begin{matrix} 
+      \phi_1(\vec{r}_1) & \phi_2(\vec{r}_1) & \phi_3(\vec{r}_1) & \phi_4(\vec{r}_1) \\ 
+      \phi_1(\vec{r}_2) & \phi_2(\vec{r}_2) & \phi_3(\vec{r}_2) & \phi_4(\vec{r}_2) \\ 
+      \phi_1(\vec{r}_3) & \phi_2(\vec{r}_3) & \phi_3(\vec{r}_3) & \phi_4(\vec{r}_3) \\ 
+      \phi_1(\vec{r}_4) & \phi_2(\vec{r}_4) & \phi_3(\vec{r}_4) & \phi_4(\vec{r}_4)
+    \end{matrix} \right|,
+\end{equation}
+and the single-particle wave functions are the hydrogen wave functions for the $1s$ and $2s$ orbitals. Their form within the variational ansatz are given by
+\begin{equation}
+\phi_{1s}({\bf r_i}) = e^{-\alpha r_i},
+\end{equation}
+and 
+\begin{equation}
+\phi_{2s}({\bf r_i}) = \left(1-\alpha r_i/2\right)e^{-\alpha r_i/2}.
+\end{equation}
+For neon, the trial wave function can take the form
+\begin{equation}
+   \psi_{T}({\bf r_1},{\bf r_2}, \dots,{\bf r_{10}}) = 
+   Det\left(\phi_{1},\phi_{2},
+   \dots,\phi_{10}\right)
+   \prod_{i<j}^{10}\exp{\left(\frac{r_{ij}}{2(1+\beta r_{ij})}\right)}, 
+\end{equation}
+In this case you need to include the $2p$ wave function as well.
+It is given as
+\begin{equation} 
+\phi_{2p}({\bf r_i}) = \alpha {\bf r_i}e^{-\alpha r_i/2}.
+\end{equation}
+Observe that $r_i = \sqrt{r_{i_x}^2+r_{i_y}^2+r_{i_z}^2}$.
+
+You can approximate the ground state of the Beryllium atom by writing it out as the Slater determinant 
+\begin{equation}
+   \psi_{T}({\bf r_1},{\bf r_2}, {\bf r_3}, {\bf r_4}) \propto 
+\left(\phi_{1s}^\uparrow({\bf r_1})\phi^\uparrow_{2s}({\bf r_2})-\phi^\uparrow_{1s}({\bf r_2})\phi^\uparrow_{2s}({\bf r_1})\right)
+\left(\phi^\downarrow_{1s}({\bf r_3})\phi^\downarrow_{2s}({\bf r_4})-\phi^\downarrow_{1s}({\bf r_4})\phi^\downarrow_{2s}({\bf r_3})\right).
+\end{equation}
+Here you can see a simple code example which implements the above expression
+\vspace{12pt}
+\begin{lstlisting}
+ for(int i = 0; i < numberParticles; i++) {
+    arg[i] = 0.0;
+    rSingleParticle = 0;
+    for(int j = 0; j < dimension; j++) {
+      rSingleParticle  += r[i][j]*r[i][j];
+    }
+    arg[i] = sqrt(rSingleParticle);
+  }
+  
+// Slater determinant, no factors as they vanish in the Metropolis ratio
+wf  = ( psi1s(arg[0])*psi2s(arg[1]) - psi1s(arg[1])*psi2s(arg[0]))*
+      ( psi1s(arg[2])*psi2s(arg[3]) - psi1s(arg[3])*psi2s(arg[2]));
+\end{lstlisting}
+\vspace{12pt}
+For beryllium we can easily implement the explicit evaluation of the Slater determinant.  The above will serve as a useful check
+for your function which computes the Slater determinat. The derivatives of the single-particle wave functions can be computed analytically and you should consider
+using the closed form expression for the local energy (not mandatory, you can use numerical derivatives as well although a closed form expressions speeds up your code).
+
+For the correlation part 
+\[
+\Psi_C=\prod_{i< j}g(r_{ij})= \exp{\left\{\sum_{i<j}\frac{ar_{ij}}{1+\beta r_{ij}}\right\}},
+\]
+we need to take into account whether electrons have equal or opposite spins since we have to obey the
+electron-electron cusp condition as well.  For Beryllium, as an example,  you can fix electrons 1 and 2 to have spin up while
+electrons 3 and 4 have spin down.
+When the electrons have  equal spins 
+\[
+a= 1/4,
+\]
+while for opposite spins (as for the ground state of  helium)
+\[
+a= 1/2.
+\] 
+
+\begin{enumerate}
+\item[2a)]   Write a function which sets up the Slater determinant for beryllium and neon and can be generalized to
+handle larger systems as well. 
+Compute the ground state energies of neon and beryllium as you did for the helium atom
+in 1d). 
+The calculations should include  parallelization, blocking, importance sampling and energy minimization.  
+
+
+\item[2b)]  With the optimal parameters for the ground state wave function, compute again the onebody density and 
+the charge density. Discuss your results and compare the results with those obtained with a pure hydrogenic wave functions. Run a Monte Carlo calculations without the Jastrow factor as well
+and compute the same quantities. How important are the correlations induced by the Jastrow factor?
+
+
+\end{enumerate}

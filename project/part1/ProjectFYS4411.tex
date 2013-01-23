@@ -1,6 +1,12 @@
 \documentclass[10pt]{article}
 \usepackage{a4wide}
 \usepackage{hyperref}
+\hypersetup{
+    urlcolor=cyan,          % color of external links
+    colorlinks=true,       % false: boxed links; true: colored links
+}
+\urlstyle{same}
+
 \usepackage{listings}
 \usepackage[]{biblatex}
 \usepackage{amsmath}
@@ -17,10 +23,11 @@
 
 \section*{FYS4411}
 
-\input{introduction}
-\input{exercise1}
-\input{exercise2}
-\input{practicalDetails}
+\input{tex/introduction}
+\input{tex/exercise1}
+\input{tex/exercise2}
+\input{tex/practicalDetails}
+
 \printbibliography
 
 \end{document}
