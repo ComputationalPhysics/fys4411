@@ -1,0 +1,34 @@
+\documentclass[10pt]{article}
+\usepackage{a4wide}
+\usepackage{hyperref}
+\hypersetup{
+    urlcolor=cyan,          % color of external links
+    colorlinks=true,       % false: boxed links; true: colored links
+}
+\urlstyle{same}
+
+\usepackage{listings}
+\usepackage[]{biblatex}
+\usepackage{amsmath}
+\bibliography{bibliography.bib}
+
+\lstset{basicstyle=\footnotesize}
+
+\newcommand{\be}{\begin{equation}}
+\newcommand{\ee}{\end{equation}}
+\newcommand{\OP}[1]{{\bf\widehat{#1}}}
+\renewcommand{\vec}{\mathbf}
+
+\begin{document}
+
+\section*{FYS4411}
+
+\input{tex/introduction}
+\input{tex/exercise1}
+\input{tex/exercise2}
+\input{tex/practicalDetails}
+
+\printbibliography
+
+\end{document}
+
