@@ -1,0 +1,14 @@
+The files included in the folder ./src can be used for generating random numbers with a normal distribution, with variance equal to 1. 
+To use the random number generator, proceed as follows:
+
+1.) Download the files and save them in a convenient directory.
+2.) Include the files with '#include ...'
+3.) Before you use the random number generator for the first time, initialize it with
+
+	RanNormalSetSeedZigVec(&seed, 100);
+
+The variable 'seed' must be an integer. The second integer does not have much to say, just do not(!) set it to 256.
+
+4.) Each time you need a random number, call
+
+	int myRandomNumber = DRanNormalZigVec();
