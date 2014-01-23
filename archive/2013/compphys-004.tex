@@ -1,0 +1,1126 @@
+\IfFileExists{revtex4.cls} {
+\documentclass[aps,prb,twocolumn,floatfix]{revtex4}
+}{
+\documentclass[aps,prb,twocolumn,floatfix]{revtex4-1}
+}
+\usepackage[utf8]{inputenc}
+\usepackage[dvips]{graphicx}
+\usepackage{listings}
+\lstset{language=Python,
+  numbers=none,
+  breaklines=true,
+  tabsize=2,
+  basicstyle=\footnotesize,
+  commentstyle={\sffamily\color{green}},
+  keywordstyle = {\sffamily\color{blue}\textbf},
+  identifierstyle = {\sffamily\color{black}},
+  stringstyle = {\sffamily\color{mahogany}},
+  numberstyle={\sffamily\color{gray}},
+  showstringspaces=false,
+  captionpos=b
+}
+\usepackage{epsfig}
+\usepackage{pst-plot}
+\usepackage{bm}
+% Extra stuff added not in original article template
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,       % false: boxed links; true: colored links
+    linkcolor=blue,          % color of internal links
+    citecolor=blue,        % color of links to bibliography
+    filecolor=blue,      % color of file links
+    urlcolor=blue           % color of external links
+}
+\urlstyle{same}
+\renewcommand{\vec}{\mathbf}
+\usepackage{subfigure}
+\newcommand{\class}[1]{{\sffamily{#1}}}
+\usepackage{natbib}
+\usepackage[loose]{units}
+\usepackage{varioref}
+
+%\usepackage{multicol}  % used for the two-column index
+
+\begin{document}
+\title{A genetic Monte Carlo method applied to quantum dots}
+\author{Svenn-Arne Dragly}
+\affiliation{Department of Physics and Center of Mathematics for Applications, University of Oslo, N-0316 Oslo, Norway}
+\date{\today}
+\begin{abstract}
+Moving from variational Monte Carlo, we explore a genetic Monte Carlo algorithm to find the ground state energies in circular quantum dots with $N = 2$, $6$ and $12$ electrons. This algorithm is compared with other minimization algorithms using a stochastic gradient approximation, as well as a diffusion Monte Carlo. This comparison shows that genetic Monte Carlo is not yet as good as other algorithms, but it has potential. The one-body density of the different configurations has also been explored.
+\end{abstract}
+
+
+\maketitle
+
+\section{Introduction} \label{sec:introduction}
+Interest in quantum dots has grown through the last decades, especially in materials science due to their atom-like properties.
+This makes them attractive as modifiers of electric, magnetic and mechanic properties in a range of host materials.
+In addition, quantum dots show interesting properties that might be used in quantum information technology in the form of qubits; the quantum computer equivalent to a classic computer bit. Quantum dots may also be used to study quantum correlation.
+
+Production of quantum dots is done through readily available chemical processes such as solution fabrication, lithography and island-growth, making mass production feasible.\cite{nanosolids} If the properties of quantum dots are found to be right this proposes an interesting future for more uses of quantum dots in new material technology.
+%TODO Figure out the right method (auto-assembly)
+
+To explore the properties of quantum dots it is possible to turn to Monte Carlo methods such as variational Monte Carlo and diffusion Monte Carlo. These methods help find approximations to both the ground state energy of the system and the ground state wave function. In an attempt to build upon these methods, I have tried to combine them with genetic algorithms. In many ways, the diffusion Monte Carlo method inherits many similarities with genetic algorithms with its replication and removal of particles. However, in this paper it was the variational Monte Carlo algorithm that turned out to be useful for a genetic approach.
+
+Evolutionary algorithms are inspired by the works of nature, imitating mechanisms such as reproduction, mutation, population mixture and natural selection. Through the use of these mechanisms, a genetic algorithm evolves towards an optimal solution to the problem at hand. Many problems in natural sciences are complex and contain many variables that are hard to adjust in a systematic and "pure" way. By the simple nature of an genetic algorithm, it makes no connection to the complexity of the system it is applied to, but instead tries a series of random moves to solve the problem. Such an algorithm converges by the simple idea of selecting the better solutions, mixing them through reproduction and mutation, while throwing away any new solutions that do not contribute to solving the problem.
+
+In this paper we'll first explore the theory behind quantum Monte Carlo, including variational, genetic and diffusion methods. This is found in part \ref{sec:theory}. The structure of the numerical implementation is outlined in section \ref{sec:implementation}, including the class relationships in the application, optimizations and a test-framework. The results are presented in section \ref{sec:results}, with a comparison of the VMC and DMC methods. In section \ref{sec:conclusion} the results are discussed and some predictions for the future of a genetic Monte Carlo algorithm for quantum mechanical problems will be made.
+
+Documentation of all functions and classes are found in the appendix and are generated from source code with the use of Doxygen. The source code is included with Doxygen's syntax highlighting at the end of the documentation\footnote{Doxygen then automatically strips out comments that are used to document the different functions.}. In the text, functions are referenced on the form \class{ClassName::functionName()}. Information about the source code and how to compile it with or without MPI is documented in this appendix.
+
+%TODO Consider rewriting the introduction in terms of what we have done in comparison to others (see science.pdf - Farnell, Gibson, Monte Carlo simulation of diffusion...)
+
+\section{Theory} \label{sec:theory}
+
+The quantum mechanical properties of a system is usually described by its wave function $\Psi$. For systems of multiple particles, this is a function of the properties of the particles, such as their positions, spins and other relevant quantum numbers. 
+
+In the following we will set up the physical system in section \ref{sec:hamiltonian}. Section \label{sec:varmethods} is dedicated to some theory about the variational method and in section \label{sec:wavefunction} we will have a look at a possible trial wave function. In section \ref{sec:qmc} the principles of quantum Monte Carlo will be outlined and in \ref{sec:vmc} we will look at the variational principle and model our trial wave function. A general genetic algorithm and a suggested application to the variational minimization problem is discussed in section \ref{sec:genetic}.
+
+We'll move on to the diffusion Monte Carlo method in section \ref{sec:dmc} and rounding off with a method to represent the wave function visually in section \ref{sec:density}.
+
+%TODO Jeeez... Rewrite the intro..
+
+\subsection{Physical System and the Hamiltonian}\label{sec:hamiltonian}
+
+%TODO Clean up this part
+
+A quantum dot can be described by a Hamiltonian $\hat H$ containing the information about the potential and the interaction energies between the particles. The possible states and energies available to a given Hamiltonian is as always described by the solutions of the Scrödinger equation
+\begin{equation}
+    \hat H | \Psi \rangle = E | \Psi \rangle
+\end{equation}
+with $|\Psi \rangle$ as the eigenstates and $E$ as the eigenenergies. With a system of many electrons, it is usual to write the Hamiltonian in terms of a non-interacting part $\hat H_0$ and an interacting part $\hat V$. The full Hamiltonian may then be written as
+\begin{equation}
+    \hat H = \hat H_0 + \hat V = \sum_{i = 1}^N \hat h_i + \sum_{i=1}^{N} \hat v_{ij}
+\end{equation} 
+where $\hat V$ is the potential from the Coulomb interaction between the electrons and $H_0$ is the (one-body) Hamiltonian in a non-interacting system, defined as
+\begin{equation}
+    \hat H_0 = \sum_{i=1}^{N} \hat h_{i} = \sum_{i=1}^{N} \left[ \hat t_{i} + \hat v_{\text{con}}(\vec r_i) \right] .
+\end{equation}
+Here $\hat t_i$ as the kinetic-energy operator and $\hat v_{\text{con}}(\vec r_i)$ is the potential energy from the confining harmonic oscillator potential set up to simulate the quantum dot. $\vec r_i$ is the vector representing the position of particle $i$ relative to the origo\cite{PhysRevB.84.115302}.
+
+The non-interacting part of the Hamiltonian is on the standard form of harmonic oscillator,
+\begin{equation}
+    \hat H_0 = \sum_{i=1}^{N} \left( - \frac{1}{2} \nabla_{i}^{2} + \frac{1}{2} \omega^{2} r_{i}^{2} \right)
+\end{equation}
+while the coloumb potential comes from the interacting part
+\begin{equation}
+    \hat V = \sum_{i=0}^{N} \sum_{j=i}^{N} \frac{1}{r_{ij}}.
+\end{equation}
+Here $r_{ij} = \sqrt{\vec{r}_1 - \vec{r}_2}$ is the distance between the electrons and $r_i = \sqrt{r_{i_{x}}^{2} + r_{i_{y}}^{2}}$ is the modulus of their position. This renders the complete Hamiltonian as
+\begin{equation}
+    \hat H = \sum_{i=1}^{N} \left( - \frac{1}{2} \nabla_{i}^{2} + \frac{1}{2} \omega^{2} r_{i}^{2} \right) + \sum_{i=0}^{N} \sum_{j=i}^{N} \frac{1}{r_{ij}}. \label{eq:hamiltonian}
+\end{equation}
+
+\subsection{Variational Method}\label{sec:varmethods}
+
+The variational principle states that
+\begin{equation}
+    E_{gs} \leq \langle \psi_T | H | \psi_T \rangle \equiv \langle H \rangle,
+\end{equation}
+which means whatever \emph{normalized} trial wave function we use, at best it will give us the ground state energy. And if we are so lucky to see this happening, we also know that the trial wave function is the ground state wave functon!
+
+Consider applying the Hamiltonian operator for our system to a normalized trial wave function. What the variational principle tells us is that no matter what this wave function looks like, the expectation value of the energy will never go below the ground state energy. This might not give away the correct wave function immediately, but it helps us get started.
+
+It has almost become a sport in the physics community to come up with new suggestions for trial wave functions to find the lowest ground state energy for a given system. While this might not be so useful in itself, the ground state tells us a lot about how the system behaves and is the first step towards understanding how it behaves also at higher excited energies. %TODO Write something smart about the ground state
+
+\subsection{Choice of the Trial Wave Function} \label{sec:wavefunction}
+
+Given the Hamiltonian described in equation \ref{eq:hamiltonian}, a trial wave function should include the effects of the external potential as well as the potential energy from the interactions between the particles. The wave function may therefore be divded into two parts, put together as a product.
+\begin{equation}
+    \Phi_0 = D_{\uparrow} D_{\downarrow}
+\end{equation}
+The non-interactive part, based on the Harmonic oscillator potential is the above mentioned Slater determinant, $|\Phi_0\rangle$. The interactive part is on the other hand modeled by a Jastrow factor product, $|\Psi_J\rangle$. This renders the complete trial wave function as
+\begin{equation}
+    \Psi_T = \Phi_0\Psi_J
+\end{equation}
+The non-interacting Schrödinger equation is
+\begin{equation}
+    \hat H_0 |\Phi \rangle = e_0 | \Phi_0 \rangle
+\end{equation}
+where $\Phi_0$ is the eigenstates of the non-interacting Hamiltonian. By the Hartree-Fock method, the eigenstates may be written as a product of all single-particle wave functions. However, since this is a fermionic system, the wave function must adhere to the Pauli exclusion principle, rendering the wave function as anti-symmetric. This can be achieved by using a Slater determinant, making the total non-interacting wave function on the form
+\begin{equation}
+    \Phi_0 = \frac{1}{\sqrt{2}} \left | 
+    \begin{array}{cccc}
+        \psi_\alpha(\vec r_0) & \psi_\alpha(\vec r_1) & \cdots &  \psi_\alpha(\vec r_N) \\
+        \psi_\beta(\vec r_0) & \psi_\beta(\vec r_1) & \cdots &  \psi_\beta(\vec r_N) \\
+        \vdots & \vdots & \ddots & \vdots \\
+        \psi_\nu(\vec r_0) & \psi_\nu(\vec r_1) & \cdots &  \psi_\nu(\vec r_N)
+    \end{array}
+\right | .
+\end{equation} 
+Here $\psi_i$ represents the different orbitals, and the letters $\alpha, \beta, \ldots, \nu$ represent all the quantum numbers needed for the system at hand. In the current case with an harmonic oscillator potential, these quantum numbers are $n_x$, $n_y$ and the electron spin.
+
+% The energies from the non-interacting part consists of the single-particle energies
+% \begin{equation}
+%     e_0 = \sum_{i} \epsilon_i = \sum \omega (2n + |m| + 1)
+% \end{equation}
+% where $n = 0,1,2,3,\ldots$ and $m = 0, \pm 1, \pm 2, \ldots$.\cite{larseivind,PhysRevB.84.115302}
+
+Because the spin up and spin down states are equal, the Slater determinant on its current form is zero and the whole Slater determinant might as well be rewritten as a product of a Slater determinant for spin up and a Slater determinant for spin down.
+
+All equations and calculations are in the following assumed to be in atomic units, with the usual constants written in dimensionless sizes, $\hbar = 1$. Here $m^*$ is the effective mass, incorporating the periodic potential felt by the electrons from the lattice and $\kappa = (4\pi \epsilon_0 \epsilon_r \hbar)/(e^2)$. The length is thus defined as $\frac{m^{*}}{\hbar\kappa}$, while the energy is in units of $\frac{m^{*}}{\kappa^2}$, known as Hartree's\cite{larseivind}.
+
+For the Slater determinant, we need the single-particle wave functions. These are chosen to be on the form of the solutions to the unperturbed Harmonic oscillator potential, i.e. without the particle interaction. This is found to be
+\begin{widetext}
+\begin{equation}
+    \phi_{n_x,n_y}(x,y) = A H_{n_{x}}(\sqrt{\alpha \omega} x) H_{n_{y}}(\sqrt{\alpha \omega} x) \exp \left( \frac{- \alpha \omega \left( x^2 + y^2\right)}{2}\right),
+\end{equation}
+\end{widetext}
+with $A$ being the normalization constant. The functions $H_{n_{x}}\left( \sqrt{\alpha \omega}x \right)$ are Hermite polynomials, which you'll find more information about in appendix \ref{sec:hermite}. To model the Coulomb interaction between the electrons, a Jastrow factor has been chosen on the form
+\begin{equation}
+    \Psi_J = \sum_{i=0}^{N} \sum_{j=i}^{N} \exp \left( \frac{a_{ih} r_{ij}}{(1 + \beta r_{ij})} \right),
+\end{equation}
+where $i$ and $j$ are the particle indices. The parameter $a_{ij}$ is equal to $1$ when the electrons have anti-parallel spins and $a = \nicefrac{1}{3}$ when the spins are parallel. $\beta$ is a variational parameter that we will vary in variational Monte Carlo.
+
+The selection of values for $\omega$ has been limited to $\omega = \unit[1]{a.u}$, $\omega = \unit[0.5]{a.u}$, $\omega = \unit[0.28]{a.u}$ and $\omega = \unit[0.01]{a.u}$. This is due to that higher oscillator frequencies would leave the single-particle terms dominant, while $\omega = 1$ represents an intermediate balance between single-particle terms and interaction. In addition $\omega  = 1.0$ is open for comparison with Taut's exact solution for $N=2$ as mentioned by \textcite{PhysRevB.84.115302}. The original paper by Taut can be found in Ref. \onlinecite{taut}. Energies for $\omega = 0.5$ and $\omega = 0.28$ are also calculated by \textcite{PhysRevB.84.115302} as well as fellow students. By using the same values, the following results may be compared to the ones found by others for verification.
+
+
+%TODO Write about the Harmonic oscillator potential
+%TODO Create figure of harmonic oscillator potential?
+
+\subsection{Quantum Monte Carlo} \label{sec:qmc}
+
+One of the goals in this paper is to find the ground state energy for different number of particles $N$ and different configurations of $\omega$ for the quantum dot Hamiltonian set up in equation \ref{eq:hamiltonian}. To find the energy of any state in quantum mechanics, one has to calculate the expectation value of the energy,
+\begin{equation}
+    E = \langle H \rangle = \frac{\langle \Psi | \hat H | \Psi \rangle}{\langle \Psi | \Psi \rangle}. \label{eq:energy}
+\end{equation}
+This may be calculated by an integral over all of space in all its dimensions. The integral becomes a multidimensional integral and each particle introduces the same number of dimensions as are defined in the problem, which in our case is 2. In other words, $N$ particles requires the calculation of an $2N$-dimensional integral, which is very costly. Thankfully, Monte Carlo integration is quite efficient at solving such integrals and is thus the weapon of choice here.
+
+\subsubsection{Monte Carlo Integration}
+
+Monte Carlo is probably one of the most famous casino-towns in computational sciences and is also the name of a range of methods that uses random numbers for statistical simulations. Monte Carlo methods are among the most efficient at sampling multi-dimensional integrals such as the ones which are presented in quantum mechanics. The idea behind Monte Carlo integration is to sample values for an integral by a random selection of variables. By the use of a probability distribution function the selection of the random variables are chosen to better fit the integrand. This so-called importance sampling helps avoid sampling too much in areas where the integrand is small.
+
+As mentioned above, we are interested in the energy expectation values. An expectation value of a function $f(x)$ can be found by
+\begin{equation}
+    \langle f \rangle = \int w(x) F(x) ~dx
+\end{equation} 
+where $w(x)$ is the probability distribution. Monte Carlo integration is performed in a discrete manner numerically, so in discrete terms we have
+\begin{equation}
+    \langle f \rangle \approx \frac{1}{N} \sum_{i=1}^{N} w(x_i) f(x_i).
+\end{equation}
+Here $x_i$ are discretely sampled points chosen at random.
+
+The central limit theorem guarantees that the statistical error goes down by $\sigma_N = \sigma/\sqrt{N}$. This is true no matter the dimensionality of the integral and therefore Monte Carlo integration is often more efficient than other methods for large integrals. The variance can be calculated according to
+\begin{equation}
+\sigma^2 = \frac{1}N \sum_{i=1}^N \left( w(x_i) f(x_i) \right)^2 - \left ( \frac{1}{N} \sum_{i=1}^N w(x_i) f(x_i) \right )^2.
+\end{equation}
+while the error for uncorrelated samples is
+\begin{equation}
+    \text{err} = \sqrt{\frac{\sigma^2}{N}}.
+\end{equation}
+However, random number generators do not in general make uncorrelated samples, so we need to make a better estimate of the variance and error through blocking. More on this in \ref{sec:blocking}
+
+\subsection{Metropolis Algorithm}
+
+Extending upon the theory of Monte Carlo integration, the Metropolis algorithm incorporates the use of random walkers to integrate the multidimensional space. A random walker has a defined probability to move around in space while sampling the energy at each move, this makes the basis of the Markov chain.
+
+Markov chains resemble a microscopic Brownian motion, and as with Brownian motion, the Markov chain will reach the most likely state of the system after running for a long time. In a Markov process a random walker has a selected probability for making a move. The new move is independent of the previous history of the system and depends only on the current state.
+
+For a random walk to be characterized as a Markov chain, it must have the following two important properties:
+\begin{itemize}
+    \item \textbf{Ergodicity}: From any random starting point, the Markov chain should be able to reach every possible state of the system. Even if the probability of the system being in the state is very small.
+    \item \textbf{Detailed balance}: At equilibrium each move in the Markov chain should be of equal probability as its reverse move
+    \begin{equation}
+        W_{i\to j} w_i = W_{j \to i} w_j
+    \end{equation} 
+    Here $W_{i\to j}$ is the probability of making a move from $i$ to $j$, while $w_i$ is the probability of being in the state $i$.
+\end{itemize}
+From detailed balance we get the relation
+\begin{equation}
+    \frac{w_i}{w_j} = \frac{W_{j\to i}}{W_{i\to j}}. %TODO What do we need this for?
+\end{equation}
+Because we may model the transition probability $W_{i \to j}$ in any manner, we choose the form
+\begin{equation}
+    W_{i \to j} = g_{i\to j} A_{i \to j}
+\end{equation}
+where $g_{i\to j}$ is the probability of suggesting a move from $i$ to $j$, while $A_{i \to j}$ is the probability for this move to be accepted.
+
+% \item
+%   It depends only on the difference in space $i - j$, it is thus
+%   homogenous in space.
+% \item
+%   It is also isotropic in space since it is unchanged when we go from
+%   $(i, j)$ to $(-i,-j)$.
+% \item
+%   It is homogenous in time since it depends only the difference between
+%   the initial time and final time.
+\subsubsection{Master Equation} %TODO Do we need this?
+The master equation in the Metropolis algorithm is
+\begin{equation}
+    \frac{dw_i}{dt} = \sum_j \left [ W_{j \to i} w_j - W_{i \to j} w_i \right ]
+\end{equation}
+and should at equilibrium be equal to zero. This means that the system should go from a state $j$ to the final state $i$ at the same rate as it goes from $i$ to $j$. This is fulfilled by the detailed balance.
+
+\subsubsection{Metropolis-Hastings Algorithm}
+
+The acceptance ratio to make a move from $i$ to $j$ is defined as
+\begin{equation}
+    R = \frac{g_{j \to i} w_i}{g_{i \to j} w_j}.
+\end{equation}
+For uniform transition probability this is simplified by setting $g_{i \to j} = 1$ and is the simple Metropolis algorithm. Metropolis-Hastings include non-uniform transition probabilities, and the acceptance probability is then given by
+\begin{equation}
+    A_{i \to j} = \min \{ R, 1 \}.
+\end{equation}
+In discrete manners on a computer we usually implement this by comparing $R$ with a number between $0$ and $1$.
+
+A usual implementation of the Metropolis algorithm is illustrated as follows:
+\begin{itemize}
+\item Generate an initial position $\vec r_i$ for a random walker.
+\item Suggest new move $\vec r_j = \vec r_i + \delta\vec r$ where $\delta\vec r$ is a randomly chosen vector of a predefined length. This length must be set to a reasonable size and is often chosen to be so that the moves are accepted $50 \%$ of the time.
+\item The move is accepted if
+\begin{equation}
+\nicefrac{w_i}{w_j} \geq \eta, ~\eta \in [0,1],
+\end{equation} 
+otherwise the move is rejected and the walker stays in the same place.
+\item If the move is accepted, the walkers position is set to $\vec r_i = \vec r_j$.
+\item All observables of interest are sampled regardless of whether the move was accepted or rejected. One such observable is the local energy, which will be described in the following section.
+\item The above is repeated until enough samples have been made.
+\end{itemize}
+The steps for randomly selecting a new step and accepting this is prone to importance sampling, as will be discussed in the following section.
+
+\subsection{Variational Monte Carlo} \label{sec:vmc}
+
+By combining the above mentioned methods of performing Monte Carlo integration and the variational principle, we get Variational Monte Carlo (VMC). Before we build upon this theory to finally be able to calculate the integral, we need some more tools. First of all, we need to introduce the local energy,
+\begin{equation}
+    E_L(\vec R,\alpha,\beta) = \frac{1}{\Psi_T(\vec R)} \hat H \Psi_T(\vec R).
+\end{equation}
+%TODO Define \vec R better
+which is kind of a sample of the energy ``locally'' in a given configuration $\vec R$ of the particles' positions or, more generally, their states. It is a function of $\alpha$ and $\beta$ because it depends on the trial wave function $\Psi_T$.\footnote{The trial wave function $\Psi_T(\alpha, \beta)$ is of course also dependent on $\alpha$ and $\beta$, but I'll write it only as $\Psi_T$ for the sake of brevity.} This enables us to rewrite the expectation value of the energy (equation \ref{eq:energy}) as
+\begin{equation}
+    \langle H(\alpha,\beta) \rangle = \int \rho(\vec R) E_L(\vec R,\alpha,\beta) d\vec R
+\end{equation}
+with $\rho$ as the probability density distribution, which is defined as
+\begin{equation}
+    \rho (\vec R,\alpha,\beta) = \frac{|\Psi_T(\vec R)|^2}{\int |\Psi_T(\vec R)|^2 d\vec R}.
+\end{equation}
+The trial wave function may now be varied to search for the minimum energy - i.e. the ground state.
+
+Finally the integral has taken on a Monte Carlo form and we are ready to transform it into a discrete form,
+\begin{equation}
+    \langle H(\alpha, \beta) \rangle \approx \frac{1}{N} \sum_i E_L (\vec R_i,\alpha,\beta).
+\end{equation}
+In the above outline of the Metropolis algorithm the suggested moves were defined by a so-called brute force method, where the next step is chosen at random and accepted by a very coarse method. Another option is to introduce stronger importance sampling, moving more in regions of higher interest. These are configurations of the particles where the probability density is large - which usually are areas with the most interesting properties compared to the vast deserts of low probability density.
+
+\subsubsection{Importance Sampling}
+
+The importance sampling is done by using the Fokker-Planck equation %TODO Referece
+\begin{equation}
+    \frac{\partial \rho (\vec R, t)}{\partial t} = \sum_{i=1}^{N} D \nabla_i \cdot (\nabla_i - \vec F_i) \rho(\vec R, t),
+\end{equation}
+with $D = \nicefrac{\hbar^2}{m} = \nicefrac{1}{2}$ as the diffusion constant found from the Schrödinger equation and $\vec F$ as a drifting term. Because we are solving the time-independent Schrödinger equation the above equation must equal zero, and it follows that it has the solution\cite{lecturenotes}
+%\begin{equation}
+%    \nabla_i^2 \rho(\vec R) = (\nabla_i \vec F_i) \rho(\vec R) + \vec F_i \rho (\vec R). \label{eq:importancediff}
+%\end{equation}
+%This has the solution
+\begin{equation}
+    \vec F_i = \frac{1}{\rho (\vec R)}\nabla_i \rho(\vec R) = 2\frac{1}{\Psi} \nabla_i \Psi
+\end{equation}
+which is known as the quantum force. The Fokker-Planck trajectories are generated from the Langevin equation
+\begin{equation}
+    \frac{\partial \vec R_i}{\partial t} = D\vec F(\vec R_i) + \sqrt{2D}\chi
+\end{equation}
+with $\vec R_i$ as the configuration of the particles at a given time and $\chi$ as a random variable with Gaussian distribution of mean 0 and variance $1$ (this random variable would change the configuration by moving one of the particles in all dimensions). The discrete version of this is
+\begin{equation}
+    \vec R_j = \vec R_i + D \vec F(\vec r) \Delta t + \sqrt{2D\Delta t} \chi
+\end{equation}
+with $\chi$ defined as above.
+
+The suggestion probability can be shown to be
+\begin{widetext}
+    \begin{equation}
+        G(\vec R_i \to \vec R_j, \Delta t) = (4\pi D \Delta t)^{-3 \nicefrac{N}{2}} \exp \left[ - \frac{\left(\vec R_j - \vec R_i - D \Delta t \vec F(\vec R_i) \right)^2}{4 D \Delta t} \right].
+    \end{equation}
+giving an acceptance ratio of
+\begin{equation}
+    \frac{G(\vec R_i \to \vec R_j, \Delta t) |\Psi(\vec R_j)|^2}{G(\vec R_j \to \vec R_i, \Delta t) |\Psi(\vec R_i)|^2}.
+\end{equation}
+The suggestion ratio may be simplified further as
+\begin{equation}
+    \frac{G(\vec R_i \to \vec R_j, \Delta t)}{G(\vec R_j \to \vec R_i, \Delta t)} = \exp \left ( \frac{1}{2} \left[ \vec F(\vec R_i) + \vec F(\vec R_j) \right] \cdot
+    \left[ \frac{D \Delta t}{2} \left ( \vec F (\vec R_i) - \vec F( \vec R_j) \right) - (\vec R_j - \vec R_i) \right] \right).
+\end{equation} 
+\end{widetext}
+With all this in place, we may start the Monte Carlo sampling to find $\langle H \rangle$.
+
+%TODO Theory behind importance sampling, greens functions and more
+% TODO Write about MHIS
+
+\subsection{Genetic Monte Carlo} \label{sec:genetic}
+
+Building upon the theory of variational Monte Carlo requires proper algorithms to search for energy minimas by testing different parameter combinations. Newton's method is probably the simplest approach to this, but requires many samples to close down on the correct minimum point. It is also known as a less efficient algorithm for other minimization problems, leaving it out as only a brute force candidate. More elegant minimization methods such as the conjugate gradient method are more effective at finding the minimas in less time, but are more prone to be set off by statistical fluctuations.
+%TODO references to ``more effective''?
+
+Genetic algorithms are effective in solving minimization problems by formulating them as fitness functions. In genetic programming, fitness functions are defined to measure how well a trial solution performs and gives an indication of what solutions to keep. Alongside abstractions such as populations, individuals and genes, the fitness function is one of the building blocks in a genetic algorithm, which are explained below.
+
+\subsubsection{Building Blocks in Genetic Algorithms}
+
+A fitness function is formed such that it may accept a number of coefficients, often referred to as genes, which it evaluates before returning a value indicating how well these genes ``fit'' the solution. In our case the solution is to minimize the energy, so the fitness function returns the energy and the system interprets it as a value where lower is better. The genes are simply a list of numbers that represent the variational parameters. Since we are working with only two parameters, this means that our genome holds only two genes per individual.
+
+The number of genes may of course vary based on the problem at hand, and in the general case the number of genes a fitness function accepts is arbitrary. The information contained in a gene may also vary between boolean values (0's and 1's), real numbers, complex numbers or even strings. In this text however, we will limit ourselves to real numbers.\footnote{It is also possible to include more genes than are needed to solve the problem at hand, by using an equivalent of what is known as ``junk DNA'' in biology. In most cases, however, this will not improve the algorithm and only introduces more needless calculations.}
+
+An example of such a fitness function could be a solver that tries to reproduce a target function by constructing a trial function from a given basis. The genes would in this case be the coefficients used in the bases. An outline of such a function is shown in the following pseudocode:
+\begin{lstlisting}[caption=Pseudocode showing an outline of a fitness function that returns the absolute difference between the target function and the trial function.]
+def target(x):
+    return 2*exp(-2*x*x) + 9*exp(-7*x*x)
+
+def fitness(genes, x):
+    difference = 0
+    for i = 0; i < x.length; i++:
+        evaluation = 0
+        for j = 0; j < genes.length; j += 2:
+            evaluation += gene[j] * exp(gene[j+1]*x*x)
+        difference = abs(evaluation - target(x))
+    return difference
+\end{lstlisting}
+This fitness function takes an array of genes $\vec a$ and an array of positions $\vec x$ as parameters. The genes are then used as coefficients for the expontential basis, which is chosen this way because the target function is also an expontential,
+\begin{equation}
+    f_{\text{trial}}(x) = \sum_{j=0,2,4,\ldots}^{N} a_j \exp(a_{j+1}x^2)
+\end{equation}
+which are evaluated in all the given positions $x_i$. After evaluation the trial function is compared to the target function and the absolute difference between the two is summed up. The sum is then returned as the ``score'' for the function, which again is interpreted by the genetic algorithm to pick out the best set of genes.
+
+Different sets of genes are further organized in individuals. Each individual has the same number of genes which in most cases will be a unique combination. In other words, the fitness function is testing each individual up against each other and will rank the individuals according to the result of the fitness function. Abstracting this further, we may keep sets of individuals in populations. This in turn helps avoiding inbreed causing the genetic combinations be too similar between individuals.
+
+\subsubsection{The Genetic Algorithm}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.5\textwidth,keepaspectratio=true]{./images/geneticalgorithm/geneticalgorithm-nofilters.pdf}
+    % geneticalgorithm.png: 831x772 pixel, 123dpi, 17.09x15.88 cm, bb=0 0 484 450
+    \caption{The genetic algorithm starts with (a) ranking and sorting all individuals based on the results from the fitness function, (b) reproducing the $N_r = N/2$ best individuals by creating children where half of the genes come from one parent and the other half from the other. Then (c) all the $N_m = N/2$ worst individuals (except those being replaced later) have one gene mutated. Finally, the worst (d) $N_i = N/8$ individuals are replaced by newcomers with a random genome and the cycle is repeated.}
+    \label{fig:geneticalgorithm}
+\end{figure}
+
+Having defined genes, individuals and populations as our building blocks, the next natural step is to let the system evolve in such a way that we selectively gather individuals with good genes. The first thing to do is to make a scoreboard with individuals ranked best by the fitness function. With this in place, deciding what to do with them is based on where in the list they are. Given a number of $N$ total individuals, one may choose to replicate $N_r$ of them, mutate $N_m$ individuals and introduce $N_i$ completely new ones. The process is outlined in figure \ref{fig:geneticalgorithm}.
+
+Replicating the individuals is done by taking the $N_r$ best individuals on the scoreboard and merging their genes. This is done in pairs, as an analogous process to two parents reproducing one child. The children are constructed by mating two and two parents that are closest on the list, i.e. with indices $i$ and $i+1$ with $i \in 0,2,4,\ldots$. Each of the child's genes are chosen by randomly selecting whether it should come from parent $i$ or $i+1$ and are gathered to form the child's genome.
+
+To make progress in evolution, mutation is performed on the $N_m$ worst individuals by randomly adjusting one of their genes. It is also possible to adjust more genes for every individual, but this might cause the algorithm to become more unstable. To introduce some completely new genetic material, we replace $N_i$ individuals that scored worst with some new ones that have a completely random genome. This helps bring in new suggestions to gene combinations that might prove to be better than any combination already available in the population.
+
+The mutations and introductions are introduced by setting the genes to random numbers on a predefined scale, which may be centered around the currently best solution.
+
+The above is repeated for a number of cycles, and at intervals two and two populations are merged by randomly interchanging their best individuals. This is to make sure a population does not end up down a blind alley, converging only towards a local fitness minima. Eventually, the algorithm either reaches a set threshold for the fitness function or the maximum number of cycles is reached, and the process is terminated.
+
+\begin{figure*}
+    \centering
+    \subfigure[]{
+        \includegraphics[width=0.30\textwidth]{../vmc/analysis/runs-manual/fitnesstest/fitness1.pdf}
+    } \label{sub:fitness200}
+    \subfigure[]{
+        \includegraphics[width=0.30\textwidth]{../vmc/analysis/runs-manual/fitnesstest/fitness2.pdf}
+    } \label{sub:fitness300}
+    \subfigure[]{
+        \includegraphics[width=0.30\textwidth]{../vmc/analysis/runs-manual/fitnesstest/fitness8.pdf}
+    } \label{sub:fitness900}
+    % fitness0.pdf: 576x432 pixel, 72dpi, 20.32x15.24 cm, bb=0 0 576 432
+    \caption{A genetic algorithm approximating a function, $f(x) = 9 \exp(- 10 x^{2}) + 3 \sin(2x)$, shown in solid blue, through (a) 200 generations, (b) 300 generations and finally (c) 900 generations. The approximation is shown in green dashes.}
+    \label{fig:fitnesstest}
+\end{figure*}
+
+\subsubsection{Quantum Mechanical Fitness Function}
+
+To make use of the genetic algorithm for our quantum dot, we need to implement a fitness function that returns the energy for a given set of parameters $\alpha$ and $\beta$. In this fitness function we may sample the energy by Monte Carlo integration, either with brute force or importance sampling.
+
+An important point to note here is that the number of samples must not be too large. Otherwise the algorithm will be dreadfully slow because of the large amount of samples that need to be made. This does on the other hand cause the energy sampling to be a bit off, but the statistical error swings both ways, so with enough individuals available\footnote{In my trials, I found 16 individuals to give a good balance between speed and reasonable results. This is however something that is subject to an investigation of its own.} the algorithm will still converge to a minimum point for the energy.
+
+A low number of samples does however make it harder for the algorithm to pinpoint a proper minimum. It would quickly find its way to an area close to the minumum, but it would oscillate around it because of statistical fluctuations. To stabilize this, it is possible to increase the number of samples after some time. For instance by a function on the form
+\begin{equation}
+    N_{\text{samples}} = N_{\text{min}} + (N_{\text{max}} - N_{\text{min}}) \frac{n^{20}}{n^{20}_{\text{total}}},
+\end{equation}
+where $n$ is the current cycle number, $N_{\text{samples}}$ is the number of samples at cycle $n$. The limits $N_{\text{min}}$ and $N_{\text{max}}$ represent the lowest and highest number of samples chosen, and $n_{\text{total}}$ is the total number of cycles.
+
+Similarily, the scale size of the evolutionary algorithm should be lowered after some cycles. For instance by a factor of $10$ by the end of the run. This will allow for the genetic algorithm to close in on a minimum without trying paramaters too far away from the current best values.
+
+
+%Oppsett: Introdusere minimeringsproblemet.
+% Introdusere genetiske algoritmer som løsere av slike problemer.
+% Forklare hvordan genetiske algoritmer er bygget opp.
+% TODO Add figure showing approximation to exponential + sine function
+
+\subsection{Diffusion Monte Carlo} \label{sec:dmc}
+
+While the variational Monte Carlo methods are limited by the initial guess at the form of the wave function, diffusion Monte Carlo is capable of finding the wave function without such restrictions. This is turn makes it a strong method for finding the ground state energy of any system even without much a priori knowledge of the system.
+
+Diffusion Monte Carlo should in principle converge to the correct form of the wave function, but a good primary guess at the wave function will help the method converge faster and require fewer walkers. One may think of the final wave function as a superposition of the initial guess, and the closer the guess is to the solution, the easier it is to construct the final superposition with fewer walkers.
+
+The idea behind diffusion Monte Carlo is the use of a special evolution operator that makes all other components but the ground state vanish from our wave function. The only catch is that we need to know the ground state energy for this operator to pick out the ground state component, which is what we wanted to find in the first place. We can, however, use the special evolution operator on a wave function that is close to the ground state, hopefully below the first excited eigenstate, and still be able to pick out the ground state. To explain why, we need to take a closer look at the evolution operator.
+
+The special evolution operator resembles the time-evolution operator, and is defined as
+\begin{equation}
+    \exp \left (- \hat H \tau \right)
+\end{equation}
+where $\tau = -i t$ is the imaginary time. Applying this to an arbitrary wave function gives
+\begin{equation}
+    \exp \left (- \hat H \tau \right) \Psi(x) = \sum_i c_i \exp \left( - \varepsilon_i \tau\right) \phi_i(x).
+\end{equation}
+Letting the imaginary time run towards infinity, $\tau \to \infty$, we see that all negative energies blow up, while positive energies vanish. Adding an energy shift to the equation makes us able to control this and set the threshold. All energies below the threshold will blow up, while energies above vanish. Energies that equals the threshold would be left intact. The effect of the special evolution operator now becomes
+\begin{equation}
+    \Psi(x, \tau) = e^{- (\hat H - E_T) \tau } \Psi(x) = \sum_i c_i e^{- (\varepsilon_i - E_T) \tau} \phi_i(x).
+\end{equation}
+If we are so lucky that $E_T$ equals the ground state energy $\varepsilon_0$, taking the limit $\tau \to \infty$ will leave us only with the ground state wave function because all $\varepsilon_i > \varepsilon_0$ will vanish, and there are of course no energies below the ground state. This leaves us with
+\begin{equation}
+    \lim_{\tau \to \infty} \Psi(x,\tau) = c_0 \phi_0(x) .
+\end{equation}
+The clue here is to also note that if the trial energy $E_T$ is below the first excited state, all excited states will still vanish, except for the ground state, which blows up. Even though it blows up, it is still the only one left, which makes it possible to pick it out by adjusting this method a little.
+
+The special evolution operator is the solution to the imaginary time Schrödinger equation
+\begin{equation}
+    \frac{\partial}{\partial \tau} \Psi(x,t) = - \hat H \Psi(x,\tau)
+\end{equation}
+This may be interpreted as a diffusion equation, with a diffusion constant of $D \equiv \frac{\hbar^2}{2m}$. As mentioned earlier, we are using atomic units that make $\hbar = m = 1$, so the diffusion constant is in our case only $D \equiv \frac{1}{2}$. Solving this partial differential equation can be done through the use of a Green's function, set to be
+\begin{equation}
+    G(x,x',\tau) \equiv \langle x | e^{-(\hat H - E_{T})\tau} | x' \rangle.
+\end{equation} 
+While the solution of the diffusion equation is
+\begin{equation}
+    \Psi (x,\tau) = \int G(x,x',\tau) \Psi(x') ~dx'
+\end{equation} 
+Splitting this into two parts, one for the kinetic term and one for the potential can be found to be\cite{lecturenotes}
+\begin{equation}
+    G(x,x',\tau) = \exp \left( - \frac{(x'-x)^2}{4D\tau} \right) e^{((E_T - V(x'))\tau)} + \mathcal{O}(\tau^2)
+\end{equation}
+The first factor of the Green's function can be interpreted as the probability of a walker to move from $x$ to $x'$, while the second factor can be interpreted as the rate of growth of random walkers at each position $x'$. This is known as the branching factor. New positions are taken to be by a simple diffusion process
+\begin{equation}
+    x = x' + \chi
+\end{equation} 
+
+Because of the Coulomb potential in the Hamiltonian defined in equation \ref{eq:hamiltonian} this outline of the diffusion Monte Carlo algorithm could become unstable. The branching term might lead to an uncontrolled growth of random walkers before the system reaches the ground state. Performing these calculations numerically with a huge amount of walkers is of course not very efficient, so this problem must be addressed.
+
+Following the outline of the text by \textcite{lecturenotes} on importance sampling of diffusion Monte Carlo, we introduce a new quantity
+\begin{equation}
+    f(x,\tau) = \Psi_T \Psi(x,\tau)
+\end{equation} 
+where $\Psi_T$ is a trial wave function. This opens up for us to rewrite the diffusion equation as
+\begin{widetext}
+    \begin{equation}
+            \frac{\partial f(x,\tau)}{\partial \tau} = D\nabla^2 f(x,\tau) - D\nabla(F(x)f(x,\tau)) - (E_L(x) - E_T)f(x,\tau)
+    \end{equation} 
+    making the Green's function take the form
+    \begin{equation}
+        G(x,x',\tau) = \frac{1}{(4\pi D \tau)^{\nicefrac{3N}{2}}} \exp \left(- \frac{(x-x'-D \tau F(x'))^2}{4D\tau} \right) \exp \left( - \left(\frac{(E_L(x) + E_L(x'))}{2} - E_T \right) \tau \right)
+    \end{equation} 
+\end{widetext}
+Here , and $E_L(x)$ is defined as the local energy with respect to this trial wave function
+\begin{equation}
+    E_L(x) \equiv \frac{1}{\Psi_T} \hat H \Psi_T
+\end{equation} 
+while $F(x)$ is a drift velocity, which comes from Fokker-Planck formalism,
+\begin{equation}
+    F(x) \equiv \frac{2}{\Psi_T} \nabla \Psi_T
+\end{equation}
+New moves of the walkers will now be calculated as
+\begin{equation}
+    x = x' + \chi + DF(x')\tau
+\end{equation} 
+This does however introduce a bias in the Fokker-Planck algorithm, causing the final result to be shifted. To handle this, a similar measure as in the Metropolis algorithm must be made by adjusting the acceptance-rejection test. The acceptance matrix thus becomes
+\begin{equation}
+    A(x,x',\tau) = \min \left [ 1, \frac{G_K(x',x) |\Psi_T(x)|^2}{G_K(x,x')|\Psi_T(x')|^2} \right ]
+\end{equation} 
+where $G_K$ is the kinetic term from the Green's function.
+
+The improvements from importance sampling make the number of walkers fluctuate less when the trial energy $E_T$ is close to the ground state energy $\epsilon_0$, and the drift term together with the branching factor helps focus the sampling on areas with lower energy, i.e. the more important parts of the space.
+
+The trial energy is updated by taking the so called mixed estimator,
+\begin{equation}
+    \langle E\rangle_{\text{mixed}} = \frac{\int \Psi \hat H \Psi_T ~dx}{\int \Psi_T \Psi dx} = \frac{\int E_L f(x) dx}{\int f(x) dx}
+\end{equation} 
+which is to say sampling all the local energies from the walkers.\cite{lecturenotes} The trial energy is then set to $E_T = \langle E \rangle_{\text{mixed}}$.
+
+\subsubsection{Fixed Node Approximation}
+
+Since systems with fermions have nodes in their wave functions (places where the wave function changes sign) we need to take this into account when constructing our trial wave function. The nodes in the trial wave functions should resemble those in the physical system as best as possible because the function $f$ would be tied by the same nodes. Thankfully the drift helps move away from the nodes, since they represent a singularity for $F(x)$, but one should also make sure nodes are not crossed in the algorithm explicitly. This is called the \emph{fixed node approximation}.
+
+For more information and a full derivation of the theory behind diffusion Monte Carlo, see \textcite{lecturenotes}.
+
+\subsection{Visually Representing the Quantum Dot; One-body Densities} \label{sec:density}
+
+Giving a good visual representation of a quantum dot is no trivial task. A plot of the potential helps tell something about the confining system we've set up, but doesn't really say much about how the quantum mechanical system. Instead, by our urge to make analogies to the classical world, it is more interesting to ask ``where'' the electrons in our quantum dot are. Even though we cannot pinpoint the exact locations of the electrons, we may at least look at the spatial configuration of their wave function.
+
+To do this, the one-body density is an interesting property. It is a way of pinning down one of the particles to a specific position and asking what the relative probability of this particle being in this position is. This is done by integrating the square of the wave function over all other particle's positions but the two we pin down by holding the particle still at a point. By doing this for multiple positions for one particle, we can eventually make a map of the probability density for this one particle.
+
+Luckily all our particles are indistinguishable electrons, so this map would be the same for all particles, leaving us with only one such integral to calculate for a given number of particles and a specific configuration for the harmonic oscillator frequency $\omega$.
+
+% TODO Write about the missing Jacobian factor. Why would two electrons want to be on top of each other?
+
+\subsection{Statistics and Blocking Analysis} \label{sec:blocking}
+
+Due to the correlation of the samples we make in variational and diffusion Monte Carlo, it is necessary to introduce blocking to get a better picture of the true variance in our samples. The principle of blocking is to split all the samples into blocks and take the mean energy value of each block. Then the variance of these mean energies are calculated. By varying the block size, we see that the variance increases with block size up to a point where the variance stays about the same (increasing the block size towards the total number of samples causes the variance to vary in strange ways, so we limit the block sizes to about 10\% of the total number of samples). This variance is said to be closer to the true variance and is no longer affected (as much) by the correlation of the samples.\cite{lecturenotes}
+
+\section{Implementation} \label{sec:implementation}
+
+In the following I will go through the application structure in section \ref{sec:applicationstructure}, optimizations done by implementing analytical expressions for often used functions in section \ref{sec:optimizinganalytic} and optimization by profiling in section \ref{sec:optimizingprofiling}.
+
+\subsection{Application Structure} \label{sec:applicationstructure}
+
+Using the object-oriented programming paradigm to structure the program has made the whole application modularized so that every part may be replaced by different implementations. By such, the trial wave functions used in this project could easily be replaced by completely different wave functions with a different set or number of parameters.
+
+Some classes have not been made virtual yet, but could easily be transformed if needed. These include the \class{Jastrow} and \class{Slater} classes. Making these virtual would make it easier to introduce new forms of both the Slater and Jastrow functions. However, some dependency to the current classes is built into the \class{WaveSlater} class, so this transformation would require some effort to be performed smoothly.
+
+\subsubsection{Modes} \label{sec:modes}
+
+The application is structured into multiple modes that may be chosen from the config file. These modes can to a great extent be seen as different applications in that they share very little resemblance in their logic. They do however share the same classes for the wave functions, Hamiltonians and some also the Monte Carlo algorithms, and have therefore been built into the same application.
+
+The modes include
+\begin{itemize}
+    \item One run - Runs one single VMC calculation for a given set of parameters $\alpha$ and $\beta$. This also performs a blocking analysis. Code for configuration file: ``onerun''
+    \item Minimizer - Runs the variational Monte Carlo simulation by plotting the energy in an energy-parameter landscape for different $\alpha$ and $\beta$ values. Code for configuration file: ``minimizer''
+    \item Density - Gathers the data needed for a one-body density plot. Code for configuration file: ``density''
+    \item Genetic minimizer - Runs the genetic Monte Carlo simulation. Code for configuration file: ``genetic''
+    \item Diffusion Monte Carlo - Runs the diffusion Monte Carlo simulation. Code for configuration file: ``diffusion''
+\end{itemize}
+The configuration file contains also all the settings for the modes, including values for $\omega$, the number of particles, the number of cycles, etc.
+
+\subsubsection{Classes} \label{sec:classes}
+
+The different classes are mostly made modulable so that there is a parent virtual class defining the different methods that should be available from this type of class. Most classes and their members are documented online at \url{http://dragly.org/source/variational-monte-carlo/} where you may also view the class hierarchy to see which classes inherits others.
+
+\subsubsection{Algorithms}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.49\textwidth]{images/algorithms/metropolisbruteforce.pdf}
+    % fitness0.pdf: 576x432 pixel, 72dpi, 20.32x15.24 cm, bb=0 0 576 432
+    \caption{The Metropolis brute force algorithm. The Metropolis Hastings algorithm includes a calculation of the quantum force before calculating the acceptance ratio.}
+    \label{fig:metropolisbruteforce}
+\end{figure}
+\begin{figure}
+    \centering
+    \includegraphics[width=0.49\textwidth]{images/algorithms/dmc.pdf}
+    % fitness0.pdf: 576x432 pixel, 72dpi, 20.32x15.24 cm, bb=0 0 576 432
+    \caption{The diffusion Monte Carlo algorithm.}
+    \label{fig:dmcalgorithm}
+\end{figure}
+
+The Metropolis-Hastings and brute force implementations are heavily based upon the text by \textcite{lecturenotes}, while the diffusion Monte Carlo implementation is based on the text by \textcite{kent1999techniques}.
+
+The Metropolis Brute force algorithm is illustrated in figure \ref{fig:metropolisbruteforce}. The Metropolis Hastings algorithm includes a calculation of the quantum force before calculating the acceptance ratio. The diffusion Monte Carlo algorithm is illustrated in \ref{fig:dmcalgorithm}.
+
+\subsubsection{Testing Framework} \label{sec:testingframework}
+
+In the spirit of test-driven development the application includes a class named \class{VmcTest} that is built on top of the QtTest framework. This is a very simple testing class that contains functions which perform the unit tests. Each unit test is made to test a specific, smallest possible, part of the whole application. Some tests do for instance check if the analytical gradients equals their numerical counterparts, while others make sure that the orbitals return their expected values.
+
+A well implemented testing framework helps ease development and introduces a natural structure to the code. By giving some thought to how certain functions or parts of the application can be tested, one automatically considers whether the structure is logically constructed or not. Not to mention the possibility to test certain parts of the application without running the whole program. In calculations such as those performed in quantum Monte Carlo, saving this waiting time leaves much more time for development.
+
+In addition, the testing framework helps make sure changes in one part of the application does not inflict negatively upon other parts. This is very important when the code becomes complex and it is hard to keep a good overview of the impact a minor change might have. The current testing framework has not only helped in the development of the application, but has made it possible to make sure that everything works as should.
+
+Instructions on how to run the testing framework is found in appendix \label{sec:runtesting}.
+
+\subsection{Parallelization using MPI} \label{sec:mpi}
+
+The variational Monte Carlo, density and energy-parameter landscape calculations were parallelized with MPI. The genetic algorithm could be made parallel by separating different populations onto separate processes, and the Diffusion Monte Carlo has been parallelized by \cite{karl} by separating the walkers onto different nodal areas for each process. This has not been done in this project due to the amount of time which had to be spent on debugging the diffusion Monte Carlo code. Instead, a simpler way of parallelizing the calculations has been done by simply setting up a framework to run each kind of calculation on a separate machine in the local cluster. This is handled by the script \class{automator.py}.
+
+\subsection{Optimizing by use of Analytical Expressions} \label{sec:optimizinganalytic}
+
+The implementation is very heavily dependent on derivatives due to the calculation of the gradient and Laplace of the wave function. Numerical derivatives usually rely on calculating the function value several times. When the number of particles or dimensions go up, these derivatives become extremely time consuming. This is also true for ratios, which needs two evaluations. In addition, many of these calculations need not take into account that every particle has moved, but can be made faster by only performing the necessary recalculations.
+
+In the current implementation of the algorithms, the suggested optimizations by \textcite{lecturenotes} have been chosen. These are as follows:
+
+\begin{itemize}
+    \item Splitting the trial wave function into a Jastrow and Slater determinant part, $\Psi_T = \Phi_0 \Psi_J$. This separation follows the form made in \ref{sec:wavefunction} where we constructed a trial wave function by considering the harmonic oscillator potential and the interaction potential separately.
+    \item Dividing the Slater determinant into two parts, one for spin up and one for spin down: 
+    \begin{equation}
+        \Phi_0 = D_{\uparrow} D_{\downarrow}    
+    \end{equation} 
+    \item Using this separation to calculate the wave function ratio as a product of the Slater ratio and the Jastrow ratio.
+    \begin{equation}
+        R \equiv \frac{\Psi_T^{\text{new}}}{\Psi_T^{\text{old}}} = \frac{\Phi_0^{\text{new}} \Psi_J^{\text{new}}}{\Phi_0^{\text{old}} \Psi_J^{\text{old}}}
+    \end{equation}
+    \item Optimizing the gradient ratio by seeing that it naturally divides into parts dependent on the Slater and Jastrow factors separately,
+    \begin{equation}
+        \frac{\nabla \Psi}{\Psi} = \frac{\nabla D_{\uparrow}}{D_{\uparrow}} + \frac{\nabla D_{\downarrow}}{D_{\downarrow}} + \frac{\nabla \Psi_J}{\Psi_J}
+    \end{equation} 
+    \item Optimizing the Laplace ratio in the same manner as the gradient,
+    \begin{equation}
+        \frac{\nabla^2 \Psi}{\Psi} = \frac{\nabla^2 D_{\uparrow}}{D_{\uparrow}} + \frac{\nabla^2 D_{\downarrow}}{D_{\downarrow}} + \frac{\nabla^2 \Psi_J}{\Psi_J} + 2 \left[ \frac{\nabla D_{\uparrow}}{D_{\uparrow}} + \frac{\nabla D_{\downarrow}}{D_{\downarrow}} \right] \cdot \frac{\nabla \Psi_J}{\Psi_J}
+    \end{equation} 
+\end{itemize}
+All of the above have terms that can be further optimized. These are as follows, where $p$ is the particle that has been moved:
+\begin{itemize}
+        \item Slater ratio: 
+        \begin{equation}
+            \frac{D_{\uparrow}^{\text{new}}}{D_{\uparrow}^{\text{old}}} = \sum_{j=1}^N \phi_j(\vec r_p^{\text{new}}) D_{jp}^{-1}( \vec r^{\text{old}} ) 
+        \end{equation}
+        \item Slater gradient ratio:
+        \begin{equation}
+            \frac{\nabla D_{\uparrow}}{D_{\uparrow}} = \sum_{j=1}^N \nabla_p \phi_j(\vec r_p) D_{jp}^{-1}( \vec r ) 
+        \end{equation}
+        \item Slater Laplace ratio: 
+        \begin{equation} 
+            \frac{\nabla^2_p D_{\uparrow}}{D_{\uparrow}} = \sum_{j=1}^N \nabla_p^2 \phi_j(\vec r_p) D_{jp}^{-1}( \vec r ) 
+        \end{equation}
+        \item To make use of these, we also need an efficient way of updating the inverse of the Slater matrix:
+\begin{widetext}
+        \begin{equation}
+            D_{kj}^{-1}(\vec r^{\text{new}}) = \left \{ 
+            \begin{array}{lr}
+                D_{kj}(\vec r^{\text{old}}) - \frac{D^{-1}_{kp}(\vec r^{\text{old}})}{R} \sum_{l=1}^{N} D_{il}(\vec r^{\text{new}}) D_lj^{-1}(\vec r^{\text{old}}) & \text{if } j \neq i \\
+                \frac{D^{-1}_{kp}(\vec r^{\text{old}})}{R} & \text{if } j = i
+            \end{array}
+ \right .
+        \end{equation} 
+\end{widetext}
+        where $R$ is the current wave function ratio.
+        \item The Jastrow ratio:
+        \begin{equation}
+            \frac{\Psi_J^{\text{new}}}{\Psi_J^{\text{old}}} = e^{\Delta U}
+        \end{equation} 
+        where
+        \begin{equation}
+            \Delta U = \sum_{i=1,i\neq p}^{N} (f_{ip}(\vec r^{\text{new}}) - f_{ip}(\vec r^{\text{old}}) 
+        \end{equation}
+        and $f_ip$ is the Jastrow argument,
+        \begin{equation}
+            \partial f_{ij} = \frac{a_{ij} r_{ij}}{(1 + \beta r_{ij})}
+        \end{equation} 
+        \item The Jastrow gradient ratio:
+        \begin{equation}
+            \frac{1}{\Psi_J} \frac{\partial \Psi_J}{\delta x_k} = \sum_{i=1,i\neq p}^{N} \frac{\vec r_{ip} \partial g_{ip}}{r_{ip} \partial r_{ip}}
+        \end{equation} 
+        where
+        \begin{equation}
+            \frac{\partial f_{ij}}{\partial r_{ij}} = \frac{a_{ij}}{(1 + \beta r_{ij})^2}
+        \end{equation} 
+        \item The Jastrow Laplace ratio:
+        \begin{equation}
+            \frac{1}{\Psi_J} \frac{\partial \Psi_J}{\delta x_k} = \sum_{i=1,i\neq p}^{N} \frac{\partial g_{ip}}{\partial x_{p}}
+        \end{equation} 
+\end{itemize}
+All these expressions are derived in the text by \textcite{lecturenotes}. The derivatives of the one-particle wave functions is found on closed form as
+\begin{widetext}
+    \begin{equation}
+        \frac{\partial \phi_{n_x,n_y}}{\partial x} = H_{n_y} \left (\sqrt{\alpha \omega} \frac{\partial H_x}{\partial x} - H_{n_x} \alpha \omega x \right) \exp \left(\frac{-\alpha \omega(x^2 + y^2)}{2} \right)
+    \end{equation} 
+    and 
+    \begin{equation}
+        \frac{\partial^2 \phi_{n_x,n_y}}{\partial x^2} = H_{n_y} \left (\alpha \omega \frac{\partial^2 H_x}{\partial^2 x} - 2\sqrt{\alpha \omega} \alpha \omega x \frac{\partial H_{n_x}}{\partial x} - \alpha \omega H_{n_x}  + \alpha^2 \omega^2 x^2 H_{n_x}  \right) \exp \left(\frac{-\alpha \omega(x^2 + y^2)}{2} \right)
+    \end{equation}
+\end{widetext}
+with $x$ and $y$ interchanged in the expressions for the $y$-derivatives. The derivatives of the Hermite polynomials are found in appendix \ref{sec:hermite}.
+                                                   
+
+% TODO Write out all the analytical findings, refer to Hjorth-Jensen's lecture notes.
+
+\subsection{Optimization by Profiling} \label{sec:optimizingprofiling}
+
+While the most important optimizations in this project are without doubt replacing numerical derivatives with their analytical counterparts, the use of profiling can make help find bottlenecks that keep the code from running even faster. Some bottlenecks are quite trivial, but are easily forgotten during the development phase. The main reason for this is that optimizations should in fact be left out during initial development. As Donald Knuth puts it in his famous quote,
+\begin{quote}
+"... premature optimization is the root of all evil" 
+\end{quote}
+The parts of code that are optimized in the initial development are often parts of code in which very little time is spent. Therefore, optimization should only be done in the end, or alternatively when bottlenecks occur that block further development.
+
+In other words, using a library such as Armadillo, which wraps the linear algebra packages LAPACK and BLAS in pretty functions,
+%TODO references to armadillo, lapack, blas
+makes much sense to speed up the development. If some operations used by these libraries should slow the code down, these exact operations should be found through profiling the code and optimized in due time. While developing code the first time, however, it is much more useful to write readable, clean code that is maintainable. This will in most cases save more time during development than what is lost run-time. In addition, implementations like LAPACK and BLAS often contain some of the fastest algorithms in the world. I for one would avoid taking on these guys in writing a faster matrix multiplication algorithm, unless that was the initial goal of my research.
+
+The profiling tool Valgrind is interfaced nicely in Qt Creator (the integrated development environment used for this project), giving a graphical overview over the most used functions and how much time is spent by the application on each of these.
+%TODO Add figure to show what the profiler looks like
+ Similar views can be shown with interfaces such as KCachegrind or reading Valgrind's output directly from a command line.
+%TODO Reference to KCachegrind and Qt Creator
+This in turn makes it easy to point out the bottlenecks in our code. In my code, the following bottlenecks were found by profiling:
+\begin{itemize}
+        \item Armadillo vectors were defined in inner loops. While most values are pulled out of loops by compile-time optimization, objects such as Armadillo vectors are not.
+        \item Vector operators in heavy load functions could be written as array operations instead. This avoids boundary-checks by Armadillo.
+        \item Non-precalculated variables in the Orbital-class. Calls to expressions such as $\alpha \cdot \omega$ are performed several times. Precalculating these expressions reduced the run-time in the Orbital class by about 10\%.
+\end{itemize}
+Implementing all these optimizations reduced the run-time of about 40 \% on top of the analytical optimizations.
+
+%TODO Refer to further optimizations in appendix
+
+\section{Results} \label{sec:results}
+
+All results are given in dimensionless units, with energies given in units of Hartrees (Ha), as noted in section \ref{sec:hamiltonian}.
+
+\subsection{Testing and verification}
+
+\begin{table}
+\centering
+\begin{tabular}{c c c c c c}
+    \hline
+    \hline
+    $N$ & $\omega$ & $E$ & $E_{\text{kin}}$ & $E_{\text{int}}$ & $E_{\text{ext}}$ \\
+    \hline
+    \input{../vmc/analysis/runs/onerun2p-omega1.00-nointeraction/energytable.tex}
+    \hline
+    \input{../vmc/analysis/runs/onerun6p-omega1.00-nointeraction/energytable.tex}
+    \hline
+    \input{../vmc/analysis/runs/onerun12p-omega1.00-nointeraction/energytable.tex}
+    \hline
+\end{tabular}
+\caption{Energies for non-interacting particles used to verify the code. The exact results should be $2$, $10$ and $28$ for $N=2,6,12$ respectively.\cite{griffiths} The table also shows the amount of kinetic energy $E_{\text{kin}}$, interaction energy $E_{\text{int}}$ and external potential energy from the harmonic oscillator, $E_{\text{ext}}$.}
+\label{tab:testingenergytable}
+\end{table}  
+
+All unit tests\footnote{Experimental unit tests were not included} ran without errors before any results where calculated. In addition, it was tested that the energies for a non-interacting system was equal to the analytically derived energies from an harmonic oscillator potential.\cite{griffiths} These differ somewhat, however, and might have caused some errors in the results. Unluckily, many tests where made with brute force Monte Carlo while most results are made using Metropolis-Hastings algorithm, so this error was not picked up in due time to produce new results. In other words, the following should be interpreted with some caution.
+
+\subsection{Variational Monte Carlo}
+
+\begin{figure*}
+    \centering
+    \subfigure[]{\includegraphics[width=0.49\textwidth]{../vmc/analysis/runs/minimizer2p-omega1.00/minimizer-trim.png}}
+    \subfigure[]{\includegraphics[width=0.49\textwidth]{../vmc/analysis/runs/minimizer2p-omega1.00/minimizer2d.pdf}}
+    % minimizer.png: 960x960 pixel, 72dpi, 33.87x33.87 cm, bb=0 0 960 960
+    \caption{Energy landscape for $N = 2$ particles with $\omega=1.00$.}
+    \label{fig:minimizer2p}
+\end{figure*}
+
+To get an overview of the parametric space around the energy minimum, plots have been made by scanning the energies for a set of parametric values $\alpha$ and $\beta$, which are used in the orbital and Jastrow parts of the wave function, respectively. For $N=2$ particles, the energy landscape is shown in figure \ref{fig:minimizer2p}.
+
+From this plot we can read off that the energy minimum is likely to lie somewhere near $\alpha = 0.985$ and $\beta = 0.4$. As we shall see in the results from the genetic Monte Carlo runs, this very close to the case. Creating this diagram is a very expensive process in terms of computational time. The above mentioned figure was made with $N_s = 10^7$ samples for each combination of $\alpha$ and $\beta$. In total there were $100$ such combinations, making the total amount of samples $N_{s_t} = 10^9$. Since this process scales with the number of particles, it is easy to see why this method is not efficient for finding what would only be close to the true minimum.
+
+The energy landscape is very similar, although with other limits for the parameters, for $N=6$ and $N=12$ particles. They are for that reason not included.
+
+%TODO Compare results from brute force with importance sampling
+%TODO Compare results between wave functions with and without the Jastrow factor
+%TODO Refer to the closed form energy and find a reference for this \cite{PhysRevB.84.115302}
+%TODO Compare amounts of kinetic and potential energy
+
+\subsubsection{Blocking analysis}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.49\textwidth]{../vmc/analysis/runs/onerun2p-omega1.00/blocking.png}
+    % minimizer.png: 960x960 pixel, 72dpi, 33.87x33.87 cm, bb=0 0 960 960
+    \caption{Blocking plot for $N = 2$ particles with $\omega=1.00$. This shows that about $4000$ samples in each block, the variance is stable for further increase in block size.}
+    \label{fig:blocking}
+\end{figure}
+
+All energy samples from the variational Monte Carlo runs were saved to file and analyzed using blocking methods to find the true variance. It is this variance that is used to estimate the error for the energies shown in table \ref{tab:energytable}. The blocking analysis was performed automatically by the creation of plots as shown in figure \ref{fig:blocking} and the error was read off as the highest value in this plot. This might be an overestimate of the error, but only slightly and therefore a better choice than underestimating the error.
+
+\subsection{Genetic Monte Carlo}
+
+\begin{figure*}
+    \centering
+    \subfigure[~$N = 2$ particles, $\omega = 1.00$, all generations.]{\includegraphics[width=0.49\textwidth]{../vmc/analysis/runs/genetic2p-omega1.00/genetic-minimizer-0.pdf}}
+    \subfigure[~$N = 2$ particles, $\omega = 1.00$, last 10\% of generations.]{\includegraphics[width=0.49\textwidth]{../vmc/analysis/runs/genetic2p-omega1.00/genetic-minimizer-3.pdf}} \\
+    \subfigure[~$N = 6$ particles, $\omega = 1.00$, all generations.]{\includegraphics[width=0.49\textwidth]{../vmc/analysis/runs/genetic6p-omega1.00/genetic-minimizer-0.pdf}}
+    \subfigure[~$N = 6$ particles, $\omega = 1.00$, last 10\% of generations.]{\includegraphics[width=0.49\textwidth]{../vmc/analysis/runs/genetic6p-omega1.00/genetic-minimizer-3.pdf}} \\
+    \subfigure[~$N = 12$ particles, $\omega = 1.00$, all generations.]{\includegraphics[width=0.49\textwidth]{../vmc/analysis/runs/genetic12p-omega1.00/genetic-minimizer-0.pdf}}
+    \subfigure[~$N = 12$ particles, $\omega = 1.00$, last 10\% of generations.]{\includegraphics[width=0.49\textwidth]{../vmc/analysis/runs/genetic12p-omega1.00/genetic-minimizer-3.pdf}}
+    % minimizer.png: 960x960 pixel, 72dpi, 33.87x33.87 cm, bb=0 0 960 960
+    \caption{The genetic algorithm minimizes the energy by varying the values for $\alpha$ and $\beta$ in an evolutionary manner. After a given number of generations the algorithm stabilizes naturally and is forced to do so by increasing the number of samples and limiting the guesses for the parameters. Figure (a), (c) and (e) illustrate the whole process, while (b), (d) and (f) show only the final parts of the algorithm.}
+    \label{fig:allGenetic}
+\end{figure*}
+
+\begin{figure*}
+    \centering
+    \subfigure[~$N = 2$, particles $\omega = 0.01$, all generations.]{\includegraphics[width=0.49\textwidth]{../vmc/analysis/runs/genetic2p-omega0.01/genetic-minimizer-0.pdf}}
+    \subfigure[~$N = 2$ particles $\omega = 0.01$, last 10\% of generations.]{\includegraphics[width=0.49\textwidth]{../vmc/analysis/runs/genetic2p-omega0.01/genetic-minimizer-3.pdf}}
+    \caption{Same caption as in figure \ref{fig:allGenetic}. Here we see that it is harder for the genetic algorithm to pin down good parameters for potentials which are spread out in space. All computations made for $\omega = 0.01$ with other numbers of particles show similar behaviour.}
+    \label{fig:smallOmegaGenetic}
+\end{figure*}
+
+\begin{table}
+\centering
+\begin{tabular}{c c c c c}
+    \hline
+    \hline
+    $N$ & $\omega$ & $\alpha$ & $\beta$ & $n_{\text{samples}}$ \\
+    \hline
+    \input{../vmc/analysis/runs/genetic2p-omega0.01/genetictable.tex}
+    \input{../vmc/analysis/runs/genetic2p-omega0.28/genetictable.tex}
+    \input{../vmc/analysis/runs/genetic2p-omega0.50/genetictable.tex}
+    \input{../vmc/analysis/runs/genetic2p-omega1.00/genetictable.tex}
+    \hline
+    \input{../vmc/analysis/runs/genetic6p-omega0.01/genetictable.tex}
+    \input{../vmc/analysis/runs/genetic6p-omega0.28/genetictable.tex}
+    \input{../vmc/analysis/runs/genetic6p-omega0.50/genetictable.tex}
+    \input{../vmc/analysis/runs/genetic6p-omega1.00/genetictable.tex}
+    \hline
+    \input{../vmc/analysis/runs/genetic12p-omega0.01/genetictable.tex}
+    \input{../vmc/analysis/runs/genetic12p-omega0.28/genetictable.tex}
+    \input{../vmc/analysis/runs/genetic12p-omega0.50/genetictable.tex}
+    \input{../vmc/analysis/runs/genetic12p-omega1.00/genetictable.tex}
+    \hline
+\end{tabular}
+\caption{Best variational parameters found by genetic algorithm.}
+\label{tab:genetictable}
+\end{table}
+
+Evolutionary methods are not really more effective than their deterministic counterparts when the problem at hand is simple. When it becomes complex, however, the evolutionary methods can be more effective due to their stochastic nature. Finding the ground state is a problem somewhat in-between the two. It is deterministic in the sense that given enough samples, the energy minimum could be readily found by a simple gradient method. On the other hand, we cannot calculate enough samples due to the humongous amount of computational cost this has. This will throw off classical gradient methods because of the statistical noise introduced by the lack of good amounts of data. And this makes room for the very stochastic process of evolutionary algorithms.
+
+To get an indication of how the genetic algorithm finds it way through parametric space you may have a look at figure \ref{fig:allGenetic}. Here the mean parameters chosen by the best individuals are presented together with their mean energy estimate. It is clear that the algorithm quickly converges to an area close to the true minimum and oscillates around it until the algorithm forces convergence by limiting the scale used to change the parameters together with an increased amount of samples.
+
+The pattern is very similar for the different configurations of $N$, but for lower values of $\omega$ it starts to fluctuate much more as seen in figure \ref{fig:smallOmegaGenetic}. This is likely because the minimum is not as sharp for a more weakly bonding harmonic oscillator potential.
+
+The results from the genetic Monte Carlo runs are shown in table \ref{tab:genetictable} together with the number of samples used. This number could likely have been pushed lower by tuning the algorithm more by selecting a better initial scale for the choices of parameters and lowering the number of requested samples. However, the results are not as good as the ones found by fellow students with the stochastic gradient algorithm, making it likely that even more samples might be needed for a more accurate results.\cite{sigve,karl}
+
+\subsubsection{Performance}
+
+Even though the number of samples probably needs to be increased to make the current algorithm approach better results, it might be possible to introduce some kind of importance sampling to the genetic algorithm, for instance by introducing some ideas from gradient methods, that could improve the results with the same amount of samples. Whether or not this is possible requires more research on how to tune the algorithm for quantum mechanical problems. The simplest improvement would likely be to cut down the number of samples in the last cycles and rather run the algorithm for more cycles, looking at the mean values instead of hoping for a complete convergence. 
+
+The number of samples used by the genetic algorithm (shown in table \ref{tab:genetictable}) is higher than what was used by \textcite{sigve} and \textcite{karl}. The results by \textcite{sigve} were typically calculated with $~10^6$ samples, while the genetic algorithm uses about $10^8$ and above. While there is a factor of $100$ between the two, there is reason to believe that an improved genetic algorithm might prove to be comparable with the results from stochastic algorithms. As mentioned, a mix might be the way to go here.
+
+Parallelization of the genetic algorithm is also a possibility, running different populations on multiple processors.
+
+\subsection{Energies}
+
+\begin{table}
+\centering
+\begin{tabular}{c c c c c c}
+    \hline
+    \hline
+    $N$ & $\omega$ & $E$ & $E_{\text{kin}}$ & $E_{\text{int}}$ & $E_{\text{ext}}$ \\
+    \hline
+    \input{../vmc/analysis/runs/onerun2p-omega0.01/energytable.tex}
+    \input{../vmc/analysis/runs/onerun2p-omega0.28/energytable.tex}
+    \input{../vmc/analysis/runs/onerun2p-omega0.50/energytable.tex}
+    \input{../vmc/analysis/runs/onerun2p-omega1.00/energytable.tex}
+    \hline
+    \input{../vmc/analysis/runs/onerun6p-omega0.01/energytable.tex}
+    \input{../vmc/analysis/runs/onerun6p-omega0.28/energytable.tex}
+    \input{../vmc/analysis/runs/onerun6p-omega0.50/energytable.tex}
+    \input{../vmc/analysis/runs/onerun6p-omega1.00/energytable.tex}
+    \hline
+    \input{../vmc/analysis/runs/onerun12p-omega0.01/energytable.tex}
+    \input{../vmc/analysis/runs/onerun12p-omega0.28/energytable.tex}
+    \input{../vmc/analysis/runs/onerun12p-omega0.50/energytable.tex}
+    \input{../vmc/analysis/runs/onerun12p-omega1.00/energytable.tex}
+    \hline
+\end{tabular}
+\caption{Energies for best variational parameters found by genetic algorithm in addition to the amounts of kinetic energy $E_{\text{kin}}$, interaction energy $E_{\text{int}}$ and external potential energy from the harmonic oscillator, $E_{\text{ext}}$. Using Metropolis-Hastings VMC with $4\cdot 10^8$ samples. Thermalized with $10^5$ samples.}
+\label{tab:energytable}
+\end{table}
+
+The resulting energies calculated by running a Metropolis-Hastings algorithm with importance sampling are shown in table \ref{tab:energytable}. The parameters used to calculate these energies are the same as in table \ref{tab:genetictable}. For $\omega = 0.01$ the results should be used with care because the variational parameters are more likely to be a bit off and because integrating a wider space with lower energy requires more samples. In other words the importance sampling is not as good.
+
+We see that less energy comes from the kinetic term for low values of $\omega$. This makes sense because at low values of $\omega$ the particles are not so spatially confined and will glide more around in space rather than bouncing back and forth between the potential ``walls''. There is also an increase in the interaction energy for lower values of $\omega$. This might be explained by that overall energy is lower and that most of the energy in the first place came from the harmonic oscillator potential, which is much smaller for small $\omega$. After all, the listed energy percentages are in relative size to each other.
+
+These energies are a bit higher than those found by fellow students who used a stochastic gradient algorithm to minimize the parameters.\cite{sigve,karl}
+
+\subsection{Diffusion Monte Carlo}
+
+The results from the diffusion Monte Carlo runs are way off state of the art implementations of diffusion Monte Carlo. I have searched thoroughly for the error in these results, but without luck. I have even attempted replacing multiple parts of my code with other students' implementations to see if the bug could reside in some peculiar place. Even after going through this code for several hours, cross checking with the implementation described above and working implementations from others, the energy returned is either a bit above or below what we would expect.
+
+In the process, some bugs were ruled out, however, and the implementation should be very close to the correct one. Properties such as the acceptance ratio of the diffusion Monte Carlo algorithm is already at expected levels, with a steady acceptance ratio of 99 \%. However, I have chosen to present the faulty results here together with results found by a working algorithm implemented by \textcite{sigve}, whose results are much closer to those found by other implementations such as the one by \cite{PhysRevB.84.115302}. The DMC results are shown in table \ref{tab:diffusiontable}.
+
+Another interesting property to have a look at for diffusion Monte Carlo is how the density of the random walkers is distributed throughout space. Since the potential is symmetric and because the one-body densities are radially symmetric, as will be shown later, these distributions are shown as a function of the radius $r$ in figure \ref{fig:distribution}. Comparing the DMC distribution to the distribution of VMC samples may tell us some interesting things about the wave function. The distribution of variational Monte Carlo samples are of course a function of the importance sampling in the Metropolis-Hastings algorithm, in the same way as the diffusion Monte Carlo distribution is a function of the DMC algorithm.
+
+\begin{figure*}
+    \centering
+    \subfigure[Distribution of samples for $N=2$ particles with $\omega = 1.00$.]{\includegraphics[width=0.40\textwidth]{../vmc/analysis/runs/diffusion2p-omega1.00/positions-distribution.pdf}} \label{fig:distribution2p}
+    \subfigure[Distribution of samples for $N=6$ particles with $\omega = 0.01$.]{\includegraphics[width=0.40\textwidth]{../vmc/analysis/runs/diffusion6p-omega0.01/positions-distribution.pdf}} \label{fig:distribution6p-omega0.01}
+    \subfigure[Distribution of samples for $N=6$ particles with $\omega = 1.00$.]{\includegraphics[width=0.40\textwidth]{../vmc/analysis/runs/diffusion6p-omega1.00/positions-distribution.pdf}} \label{fig:distribution6p-omega1.00}
+    \subfigure[Distribution of samples for $N=12$ particles with $\omega = 1.00$.]{\includegraphics[width=0.40\textwidth]{../vmc/analysis/runs/diffusion12p-omega1.00/positions-distribution.pdf}}
+    % density.png: 1280x960 pixel, 72dpi, 45.16x33.87 cm, bb=0 0 1280 960
+    \caption{Distribution plots showing the distribution of samples }
+    \label{fig:distribution}
+\end{figure*}
+
+In figure \ref{fig:distribution2p} we see that the DMC distribution is very close to VMC distribution for $N=2$ and $\omega = 1.0$. This indicates that the VMC trial wave function should not be far from the true ground state wave function that DMC approximates. 
+
+For other values of $N$ and $\omega$, however, some intriguing properties appear in the distribution plots. In figure \ref{fig:distribution6p-omega0.01}, showing the distributions for $N=6, \omega=0.01$, the DMC distribution is offset from VMC. This might indicate that the VMC trial function no longer encompasses all properties of the true ground state. In figure \ref{fig:distribution6p-omega1.00}, for which $N = 6, \omega=1.0$, the two distributions are closer in shape, making it tempting to beleive that in more loose potentials with lower $\omega$, the true wave function shows off properties that are not included in our trial wave function.
+
+The noisy bumps in the DMC plots are worrying, though. Similar plots made by fellow students do not show the same kind of noise, and it has led me to believe that it might be related to the errors in my DMC results. Perhaps the branching or transition factor in DMC is causing the walkers to gather in a noisy manner. Further investigation is needed to see if there is in fact a connection here.
+
+\begin{table}
+\centering
+\begin{tabular}{c c c c}
+    \hline
+    \hline
+    $N$ & $\omega$ & $E$ & $E_{\text{true}}$ \\
+    \hline
+    2 & 0.01 & \input{../vmc/analysis/runs/diffusion2p-omega0.01/diffusiontable.tex} & 0.073818(7) \\
+    2 & 0.28 & \input{../vmc/analysis/runs/diffusion2p-omega0.28/diffusiontable.tex} & 1.02164(3) \\
+    2 & 0.50 & \input{../vmc/analysis/runs/diffusion2p-omega0.50/diffusiontable.tex} & 1.65969(4) \\
+    2 & 1.00 & \input{../vmc/analysis/runs/diffusion2p-omega1.00/diffusiontable.tex} & 3.00001(2) \\
+    \hline
+    6 & 0.01 & \input{../vmc/analysis/runs/diffusion6p-omega0.01/diffusiontable.tex} & 0.68953(2) \\
+    6 & 0.28 & \input{../vmc/analysis/runs/diffusion6p-omega0.28/diffusiontable.tex} & 7.5999(1) \\
+    6 & 0.50 & \input{../vmc/analysis/runs/diffusion6p-omega0.50/diffusiontable.tex} & 11.7845(2) \\
+    6 & 1.00 & \input{../vmc/analysis/runs/diffusion6p-omega1.00/diffusiontable.tex} & 20.160(1) \\
+    \hline
+    12 & 0.01 & \input{../vmc/analysis/runs/diffusion12p-omega0.01/diffusiontable.tex} & 2.47234(5) \\
+    12 & 0.28 & \input{../vmc/analysis/runs/diffusion12p-omega0.28/diffusiontable.tex} & 25.6364(2) \\
+    12 & 0.50 & \input{../vmc/analysis/runs/diffusion12p-omega0.50/diffusiontable.tex} & 39.1580(2) \\
+    12 & 1.00 & \input{../vmc/analysis/runs/diffusion12p-omega1.00/diffusiontable.tex} & 65.7004(5) \\
+    \hline
+\end{tabular}
+\caption{Energies for best variational parameters found by diffusion Monte Carlo algorithm (DMC). The last column shows the better values found by \textcite{sigve}}
+\label{tab:diffusiontable}
+\end{table}
+
+\subsection{One-body Densities} \label{sec:one-body}
+
+
+%TODO Reference this stuff about one-body with  some literature
+\begin{figure*}
+    \centering
+    \subfigure[]{\includegraphics[width=0.49\textwidth]{../vmc/analysis/runs/density2p-omega0.01/density-trim.png}}
+    \subfigure[]{\includegraphics[width=0.45\textwidth]{../vmc/analysis/runs/density2p-omega0.01/density2d.pdf}}
+    % density.png: 1280x960 pixel, 72dpi, 45.16x33.87 cm, bb=0 0 1280 960
+    \caption{One-body density for $N=2$ particles with $\omega = 0.01$.}
+    \label{fig:density2p-omega0.01}
+\end{figure*}
+
+\begin{figure*}
+    \centering
+    \subfigure[]{\includegraphics[width=0.49\textwidth]{../vmc/analysis/runs/density2p-omega0.01-nointeraction/density-trim.png}}
+    \subfigure[]{\includegraphics[width=0.45\textwidth]{../vmc/analysis/runs/density2p-omega0.01-nointeraction/density2d.pdf}}
+    % density.png: 1280x960 pixel, 72dpi, 45.16x33.87 cm, bb=0 0 1280 960
+    \caption{One-body density for $N=2$ particles with $\omega = 0.01$ and no interaction enabled between the particles.}
+    \label{fig:density2p-omega0.01-nointeraction}
+\end{figure*}
+
+% \begin{figure*}
+%     \centering
+%     \subfigure[]{\includegraphics[width=0.49\textwidth]{../vmc/analysis/runs/density2p-omega0.28/density-trim.png}}
+%     \subfigure[]{\includegraphics[width=0.45\textwidth]{../vmc/analysis/runs/density2p-omega0.28/density2d.pdf}}
+%     % density.png: 1280x960 pixel, 72dpi, 45.16x33.87 cm, bb=0 0 1280 960
+%     \caption{One-body density for $N=2$ particles with $\omega = 0.28$.}
+%     \label{fig:density2p-omega0.28}
+% \end{figure*}
+
+\begin{figure*}
+    \centering
+    \subfigure[]{\includegraphics[width=0.49\textwidth]{../vmc/analysis/runs/density2p-omega1.00/density-trim.png}}
+    \subfigure[]{\includegraphics[width=0.45\textwidth]{../vmc/analysis/runs/density2p-omega1.00/density2d.pdf}}
+    % density.png: 1280x960 pixel, 72dpi, 45.16x33.87 cm, bb=0 0 1280 960
+    \caption{One-body density for $N=2$ particles with $\omega = 1.00$. Note that this is much more spatially confined than the cases where $\omega = 0.01$.}
+    \label{fig:density2p-omega1.00}
+\end{figure*}
+
+\begin{figure*}
+    \centering
+    %TODO Include figure when done
+    \subfigure[]{\includegraphics[width=0.49\textwidth]{../vmc/analysis/runs/density6p-omega0.01-oneline/density-trim.png}}
+    \subfigure[]{\includegraphics[width=0.45\textwidth]{../vmc/analysis/runs/density6p-omega0.01-oneline/density2d.pdf}}
+    % density.png: 1280x960 pixel, 72dpi, 45.16x33.87 cm, bb=0 0 1280 960
+    \caption{One-body density for $N=6$ particles with $\omega = 0.01$.}
+    \label{fig:density6p-omega0.01}
+\end{figure*}
+
+%TODO Fix the plots with six particles (missing P(x,y))
+\begin{figure*}
+    \centering
+    \subfigure[]{\includegraphics[width=0.49\textwidth]{../vmc/analysis/runs/density6p-omega1.00/density-trim.png}}
+    \subfigure[]{\includegraphics[width=0.45\textwidth]{../vmc/analysis/runs/density6p-omega1.00/density2d.pdf}}
+    % density.png: 1280x960 pixel, 72dpi, 45.16x33.87 cm, bb=0 0 1280 960
+    \caption{One-body density for $N=6$ particles with $\omega = 1.00$.}
+    \label{fig:density6p-omega1.00}
+\end{figure*}
+
+%TODO Remove if the plots are not finished yet
+% \begin{figure*}
+%     \centering
+%     %TODO Include figure when done
+%     \subfigure[]{\includegraphics[width=0.49\textwidth]{../vmc/analysis/runs-manual/density12p-omega0.01-oneline/density-trim.png}}
+%     \subfigure[]{\includegraphics[width=0.45\textwidth]{../vmc/analysis/runs-manual/density12p-omega0.01-oneline/density2d.pdf}}
+%     % density.png: 1280x960 pixel, 72dpi, 45.16x33.87 cm, bb=0 0 1280 960
+%     \caption{One-body density for $N=12$ particles with $\omega = 0.01$. Note that this plot was made by sampling along a line and then rotating the result around the $z$-axis. This procedure seems to have had some flaws, so ignore the ``square''-like shape of the plot.}
+%     \label{fig:density12p-omega1.00}
+% \end{figure*}
+
+\begin{figure*}
+    \centering
+    %TODO Include figure when done
+    \subfigure[]{\includegraphics[width=0.49\textwidth]{../vmc/analysis/runs-manual/density12p-omega1.00-oneline/density-trim.png}}
+    \subfigure[]{\includegraphics[width=0.45\textwidth]{../vmc/analysis/runs-manual/density12p-omega1.00-oneline/density2d.pdf}}
+    % density.png: 1280x960 pixel, 72dpi, 45.16x33.87 cm, bb=0 0 1280 960
+    \caption{One-body density for $N=12$ particles with $\omega = 1.00$. Note that this plot was made by sampling along a line and then rotating the result around the $z$-axis. This procedure seems to have had some flaws, so ignore the ``square''-like shape of the plot.}
+    \label{fig:density12p-omega1.00}
+\end{figure*}
+
+In the following interaction between the electrons is assumed unless explicitly noted.
+
+The one-body density plots are shown in figures \ref{fig:density2p-omega0.01} through \ref{fig:density12p-omega1.00}. There are some interesting trends occuring as a function of $\omega$ and the number of particles $N$.
+
+For instance, in the $N=2$, $\omega = 1.00$ case (fig. \ref{fig:density2p-omega1.00}), we see that the density is highest in the center of the potential and gradually fades off with greater radii. However, for $N=2$, $\omega=0.01$ (fig. \ref{fig:density2p-omega0.01}) it is obvious that the repulsion between the electrons are pushing them further apart, even making the highest density area move outside the center. There is a small bump in the middle, though, giving an indication of a wave-like shape.
+
+An interesting comparison here is the plot for $N=2$, $\omega=0.01$ with no simulated interaction between the electrons (fig. \ref{fig:density2p-omega0.01-nointeraction}), which shows a similar shape to the $N=2$,$\omega=1.00$ case, although much more spread out in space. This makes it reasonable to believe that for $N=2$,$\omega=1.00$ it is in fact the quantum dot potential that overrides the interaction potential and squeezes the wave function together.
+
+For $N=6$ particles more interesting things are happening. Here we see that the shape of the one-body density plots are starting to look more like a wave with multiple curves. One likely reason for why the shape is less cone-like for six particles even with $\omega = 1.00$ is likely that the Jastrow factor is becoming dominant and makes the electrons repel each other more than in the two particle case.
+
+These features are even more evident for $N=12$, where the wave-shape is visible for $\omega = 1.00$ as well.
+
+It is comforting to see that the shapes of the one-body densities resemble the shapes of the distribution plots in figure \ref{fig:distribution}. This means that the walkers are sampling the areas where the probability density is highest for each electron.
+
+\section{Conclusions and Future Perspective} \label{sec:conclusion}
+
+Using a genetic algorithm to minimize variational Monte Carlo simulations appears to be useful. Its performance is already close to the one shown by stochastic gradient approximation, even though there is a factor $100$ difference between the two. Considering that there may be many ways to improve the genetic algorithm for quantum problems, even better results could be achieved if more research is put into this field.
+
+For the different combinations of parameters the energies have also been calculated, giving a measurement of how close the genetic algorithm came to guessing at right parameters. The fact that these are a bit higher than those found for instance by \textcite{sigve} shows that the genetic algorithm is close, but does not always converge correctly.
+
+We have studied the one-body densities of the different configurations to get an impression of the spatial configuration of the wave function. This has given some insight in the balance between the Coulomb interaction between the electrons and the quantum dot potential, which the wave function is modeled upon through the use of a Jastrow factor and a Slater determinant, respectively.
+
+Sadly the diffusion Monte Carlo implementation did not give as good results as one might hope for and some further bug-testing of the software is needed to find the error here.
+
+\appendix
+
+\section{Running the Application} \label{sec:runapplication}
+
+Download the latest version from the repository which should be linked from \href{http://dragly.org/source/variational-monte-carlo/}{dragly.org/source/variational-monte-carlo}.
+
+The source code is most readily compiled using qmake. If you don't have qmake installed, you can download the Qt framework from \href{http://qt-project.org/}{qt-project.org}. To compile the source code, change directory to the ``vmc'' folder and run
+\begin{lstlisting}
+qmake && make
+\end{lstlisting}
+after compilation, you need to set up a configuration file. For an example see ``config.ini'' in the ``vmc'' folder. The configuration file must reside in the same folder as the current working directory. After setting up the configuration, the application can be started by running
+\begin{lstlisting}
+./vmc
+\end{lstlisting}
+or
+\begin{lstlisting}
+mpirun -n 4 ./vmc
+\end{lstlisting}
+if you want to run with MPI and four processes.
+%TODO explain more about the configuration options
+
+\section{Running the Unit Tests} \label{sec:runtesting}
+
+Qt version 4 or above must be installed before running the unit tests. Make sure that all tests you want to run are listed under ``public slots'' in the \class{VmcTests} class.
+
+To compile the unit tests, change directory to the ``tests'' folder and run
+\begin{lstlisting}
+qmake && make
+\end{lstlisting}
+The tests may be run without further configuration by running
+\begin{lstlisting}
+./tst_vmctest
+\end{lstlisting}
+
+\section{Hermite Polynomials} \label{sec:hermite}
+
+Hermite polynomials are defined as the solutions to the differential equation
+\begin{equation}
+    \frac{d^2 H(x)}{dx^2} - 2x \frac{dH(x)}{dx} + \left( \lambda - 1  \right) H(x) = 0
+\end{equation} 
+The first of these polynomials, which are the only ones used in this report, are
+\begin{equation}
+\begin{array}{rcl}
+H_{0}(x) &=& 1 \\
+H_{1}(x) &=& 2x, \\
+H_{2}(x) &=& 4x^2 - 2, \\
+H_{3}(x) &=& 8x^3 - 12x
+\end{array}
+\end{equation} 
+and
+\[H_{4}(x) = 16x^4 - 48x^2 + 12.\]
+Their derivatives are easily found to be
+\begin{equation}
+\begin{array}{rcl}
+H'_{0}(x) &=& 0 \\
+H'_{1}(x) &=& 2, \\
+H'_{2}(x) &=& 2\cdot 4x, \\
+H'_{3}(x) &=& 3\cdot 8x^2 - 12
+\end{array}
+\end{equation} 
+and
+\[H'_{4}(x) = 4 \cdot  16 x^3 - 2\cdot48x.\]
+While the second order derivatives are
+\begin{equation}
+\begin{array}{rcl}
+H''_{0}(x) &=& 0 \\
+H''_{1}(x) &=& 0, \\
+H''_{2}(x) &=& 2\cdot 4, \\
+H''_{3}(x) &=& 2\cdot 3\cdot 8x
+\end{array}
+\end{equation} 
+and
+\[H''_{4}(x) = 3 \cdot 4 \cdot 16x^2 - 2\cdot48 .\]
+Even though there is a general formula for finding the derivatives of the Hermite polynomials, the derivatives have been implemented directly into the \class{Hermite} class to save calculations.
+
+%\bibliographystyle{apalike} 
+\bibliographystyle{abbrvnat}
+\bibliography{references}
+
+\end{document}
