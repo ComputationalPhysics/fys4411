@@ -18,7 +18,7 @@ int main()
     cout << "----HF solver----" << endl;
 
     //System configuration
-    int nParticles = 4;
+    int nParticles = 2;
     int Z = nParticles;
     int nStates = 8;
 
@@ -74,7 +74,7 @@ void runSolver(const int nParticles, const int Z, int nStates)
 
         //convergence test
         diff = e - ePrev;
-        if (abs(diff.max() < threshold))
+        if (abs(diff.max()) < threshold)
             break;
         ePrev = e;
 
