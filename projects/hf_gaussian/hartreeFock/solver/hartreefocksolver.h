@@ -19,7 +19,7 @@ public:
 
 
 private:
-    //It is usual to use "m_" in front of every  member variable
+    //It is common to use "m_" in front of every member variable
     double m_energy;
     mat m_S;
     mat m_h;
@@ -30,7 +30,7 @@ private:
 
     ElectronSystem* m_electronSystem;
 
-    void setupEverything();
+    void solveSingle();
     void setupQ();
     void setupS();
     void setuph();
